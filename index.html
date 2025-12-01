@@ -3,84 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>电器声纹检测演示</title>
-    <!-- 引入 MQTT 库 -->
+    <title>智能声纹检测演示</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
-        /* 全局样式修复：禁止滚动，固定屏幕 */
-        body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #000; color: #fff; height: 100vh; width: 100vw; overflow: hidden; }
+        body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #000; color: #fff; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* 角色选择界面 */
-        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; wudth: 100%; z-index: 10; background: #222; position: absolute; top:0; left:0; }
+        /* 角色选择 */
+        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 20; background: #222; position: absolute; top:0; left:0; }
         button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 8px; border: none; background: #007bff; color: white; }
         
-        /* 展示端布局修复：强制固定比例 */
-        #display-view { display: none; height: 100%; width: 100%; flex-direction: column; }
+        /* 展示端 */
+        #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
         
-        /* Canvas 容器：使用 relative + overflow hidden 防止被撑大 */
-        #canvas-container { 
-            flex: 1; /* 占据剩余空间 */
-            position: relative; 
-            width: 100%;
-            overflow: hidden; 
-            background: #111; 
-            border-bottom: 2px solid #333; 
+        /* 隐形点击层 (Secret Touch Layer) */
+        #secret-layer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; 
+            display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
         }
+        .secret-zone { /* border: 1px solid rgba(255,0,0,0.1); 调试时可取消注释看区域 */ }
+
+        #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #111; border-bottom: 2px solid #333; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
         
-        /* Canvas 本体：使用 absolute 强制填满容器 */
-        canvas { 
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%; 
-            height: 100%; 
-            display: block; 
-        }
-        
-        /* 底部文字区域 */
-        #text-container { 
-            height: 40%; /* 固定高度比例 */
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            padding: 20px; 
-            text-align: center; 
-            background: #000; 
-            box-sizing: border-box;
-        }
+        #text-container { height: 40%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; background: #000; z-index: 5; }
         #status-title { font-size: 18px; color: #888; margin-bottom: 10px; }
-        #status-result { font-size: 28px; font-weight: bold; color: #0f0; }
+        #status-result { font-size: 32px; font-weight: bold; color: #0f0; }
         
-        /* 控制端样式 */
-        #control-view { display: none; padding: 20px; text-align: center; height: 100%; overflow-y: auto; }
+        /* 控制端 */
+        #control-view { display: none; padding: 20px; text-align: center; height: 100%; overflow-y: auto; background: #222; }
         .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 20px; background: #333; border: 1px solid #555; }
-        .ctrl-btn:active { background: #555; }
         
         .overlay-text { position: absolute; top: 10px; left: 10px; color: #0f0; font-family: monospace; font-size: 12px; z-index: 5;}
-        
-        /* 连接状态提示 */
-        #connection-status {
-            position: fixed; top: 0; right: 0; background: red; padding: 5px; font-size: 12px; z-index: 100; display: none;
-        }
+        #connection-status { position: fixed; top: 0; right: 0; background: #333; padding: 5px 10px; font-size: 12px; z-index: 100; color: #aaa; }
     </style>
 </head>
 <body>
 
-    <div id="connection-status">连接断开</div>
+    <div id="connection-status">等待操作</div>
 
     <!-- 1. 角色选择 -->
     <div id="role-select">
-        <h2>请选择模式</h2>
-        <button onclick="startDisplay()">我是展示端 (手机)</button>
-        <button onclick="startController()">我是控制端 (遥控)</button>
-        <p style="color:#666; font-size:12px; margin-top:20px;">v2.0 修复版</p>
+        <h2>模式选择</h2>
+        <button onclick="startDisplay()">手机展示端</button>
+        <button onclick="startController()">电脑控制端</button>
+        <p style="color:#666; font-size:12px; margin-top:20px; max-width: 80%;">
+            技巧：如果连不上网，手机端点击屏幕四个角落可直接触发结果。
+        </p>
     </div>
 
-    <!-- 2. 展示端 -->
+    <!-- 2. 展示端 (手机) -->
     <div id="display-view">
+        <!-- 隐形作弊层：覆盖全屏 -->
+        <div id="secret-layer">
+            <div class="secret-zone" onclick="handleSecretClick('fridge')"></div> <!-- 左上 -->
+            <div class="secret-zone" onclick="handleSecretClick('lamp')"></div>   <!-- 右上 -->
+            <div class="secret-zone" onclick="handleSecretClick('abnormal')"></div> <!-- 左下 -->
+            <div class="secret-zone" onclick="handleSecretClick('reset')"></div>    <!-- 右下 -->
+        </div>
+
         <div id="canvas-container">
-            <div class="overlay-text">Spectrum Analysis // LIVE</div>
+            <div class="overlay-text">AI Acoustic Analysis // LIVE</div>
             <canvas id="visualizer"></canvas>
         </div>
         <div id="text-container">
@@ -89,176 +71,159 @@
         </div>
     </div>
 
-    <!-- 3. 控制端 -->
+    <!-- 3. 控制端 (电脑) -->
     <div id="control-view">
-        <h2>演示控制台</h2>
-        <p>点击按钮发送指令</p>
-        <button class="ctrl-btn" onclick="sendCommand('无设备', 'normal')">无设备 (复位)</button>
-        <button class="ctrl-btn" style="color:#0f0" onclick="sendCommand('检测到电冰箱', 'normal')">电冰箱 - 正常</button>
-        <button class="ctrl-btn" style="color:#ff0" onclick="sendCommand('检测到台灯', 'normal')">台灯 - 工作中</button>
-        <button class="ctrl-btn" style="color:#f00" onclick="sendCommand('检测到微波炉', 'abnormal')">微波炉 - 异常</button>
-        <button class="ctrl-btn" style="color:#f00" onclick="sendCommand('检测到空调', 'abnormal')">空调 - 故障</button>
+        <h2 style="color:#fff">控制台</h2>
+        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">无设备 (复位)</button>
+        <button class="ctrl-btn" style="color:#0f0" onclick="sendMqttCommand('fridge')">电冰箱 - 正常</button>
+        <button class="ctrl-btn" style="color:#ff0" onclick="sendMqttCommand('lamp')">台灯 - 工作中</button>
+        <button class="ctrl-btn" style="color:#f00" onclick="sendMqttCommand('abnormal')">异常 - 震动警告</button>
     </div>
 
     <script>
-        // --- 核心配置修改 ---
-        // 使用更稳定的 EMQX WSS 端口配置
-        const mqttHost = "broker.emqx.io";
-        const mqttPort = 8084; // SSL/WSS 端口
-        const mqttPath = "/mqtt"; 
-        
-        // 为了防止冲突，请在 topic 后加个你自己的后缀，比如你的名字缩写
-        const topic = "demo/app/blind_assist_v2_fixed"; 
-        
-        const clientID = "client_" + Math.random().toString(16).substr(2, 8);
-        const client = new Paho.MQTT.Client(mqttHost, mqttPort, mqttPath, clientID);
+        // --- 核心逻辑 ---
+        const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
+        const topic = "demo/blind_assist/v3/" + Math.random().toString(16).substr(2, 4); // 随机Topic避免冲突
+        let client;
 
-        let isConnected = false;
-
-        // --- 功能逻辑 ---
-        function startDisplay() {
-            document.getElementById('role-select').style.display = 'none';
-            document.getElementById('display-view').style.display = 'flex';
-            initAudio();
-            connectMQTT(true);
-        }
-
-        function startController() {
-            document.getElementById('role-select').style.display = 'none';
-            document.getElementById('control-view').style.display = 'block';
-            connectMQTT(false);
-        }
-
-        // --- MQTT 连接 (增强版) ---
-        function connectMQTT(isReceiver) {
-            document.getElementById('connection-status').style.display = 'block';
-            document.getElementById('connection-status').innerText = "正在连接服务器...";
-            document.getElementById('connection-status').style.background = "#ffa500";
-
-            client.connect({
-                useSSL: true, // 必须开启
-                timeout: 5,
-                keepAliveInterval: 60,
-                onSuccess: () => {
-                    console.log("MQTT Connected");
-                    isConnected = true;
-                    document.getElementById('connection-status').style.display = 'none'; // 连接成功隐藏提示
-                    
-                    if (isReceiver) {
-                        client.subscribe(topic);
-                        speakText("系统就绪");
-                    }
-                },
-                onFailure: (e) => { 
-                    console.log(e);
-                    document.getElementById('connection-status').innerText = "连接失败，点击重试";
-                    document.getElementById('connection-status').style.background = "red";
-                    document.getElementById('connection-status').onclick = () => location.reload();
-                    alert("服务器连接失败，请检查网络或刷新页面。\n错误码：" + e.errorCode + "\n信息：" + e.errorMessage);
-                }
-            });
-
-            client.onConnectionLost = (responseObject) => {
-                if (responseObject.errorCode !== 0) {
-                    console.log("Connection Lost: " + responseObject.errorMessage);
-                    document.getElementById('connection-status').style.display = 'block';
-                    document.getElementById('connection-status').innerText = "连接断开";
-                }
-            };
-
-            client.onMessageArrived = (message) => {
-                const data = JSON.parse(message.payloadString);
-                updateUI(data.text, data.type);
-            };
-        }
-
-        function sendCommand(text, type) {
-            if(!isConnected) {
-                alert("未连接服务器，请刷新重试");
-                return;
+        // 统一处理结果展示
+        function triggerResult(cmd) {
+            let text = "";
+            let color = "#0f0";
+            
+            switch(cmd) {
+                case 'fridge': text = "检测到电冰箱，工作正常"; break;
+                case 'lamp': text = "检测到台灯，工作中"; color = "#ffff00"; break;
+                case 'abnormal': text = "警告：检测到设备异常震动"; color = "#ff0000"; break;
+                case 'reset': text = "无设备"; color = "#888"; break;
             }
-            let fullText = text;
-            if(type === 'normal' && text !== '无设备') fullText += "，工作正常";
-            if(type === 'abnormal') fullText += "，工作异常，请注意";
 
-            const payload = JSON.stringify({ text: fullText, type: type });
-            const message = new Paho.MQTT.Message(payload);
-            message.destinationName = topic;
-            client.send(message);
-        }
-
-        function updateUI(text, type) {
-            const resultDiv = document.getElementById('status-result');
-            resultDiv.innerText = text;
-            if (text.includes("异常")) resultDiv.style.color = "#ff3333";
-            else if (text.includes("无设备")) resultDiv.style.color = "#888";
-            else resultDiv.style.color = "#0f0";
+            const el = document.getElementById('status-result');
+            el.innerText = text;
+            el.style.color = color;
             speakText(text);
         }
 
-        function speakText(text) {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'zh-CN';
-            window.speechSynthesis.speak(utterance);
+        // --- 隐形按钮逻辑 (无网也能用) ---
+        function handleSecretClick(cmd) {
+            // 点击屏幕角落触发，给个震动反馈(如果手机支持)
+            if(navigator.vibrate) navigator.vibrate(50);
+            triggerResult(cmd);
+            document.getElementById('connection-status').innerText = "本地触发: " + cmd;
         }
 
-        // --- 修复后的音频可视化逻辑 ---
+        // --- MQTT 通信逻辑 ---
+        function connectMQTT(isReceiver) {
+            const clientID = "id_" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
+
+            document.getElementById('connection-status').innerText = "连接中...";
+            
+            client.connect({
+                useSSL: true,
+                onSuccess: () => {
+                    document.getElementById('connection-status').innerText = "服务器已连接";
+                    document.getElementById('connection-status').style.color = "#0f0";
+                    if (isReceiver) {
+                        client.subscribe(topic);
+                        // 把 Topic 显示出来，方便电脑端通过URL参数或其他方式对齐(如果需要)
+                        // 这里简化为两端必须打开同一个HTML，且为了演示简单，我们不动态同步Topic，
+                        // 实际演示建议：让电脑连手机热点，能连上的概率很大。
+                    }
+                },
+                onFailure: (e) => {
+                    document.getElementById('connection-status').innerText = "连接失败(使用隐形触控)";
+                    document.getElementById('connection-status').style.color = "#f00";
+                    console.log("MQTT Failed", e);
+                }
+            });
+
+            if (isReceiver) {
+                client.onMessageArrived = (msg) => {
+                    triggerResult(msg.payloadString);
+                };
+            }
+        }
+
+        // 发送指令
+        function sendMqttCommand(cmd) {
+            if(client && client.isConnected()) {
+                const message = new Paho.MQTT.Message(cmd);
+                message.destinationName = topic;
+                client.send(message);
+            } else {
+                alert("未连接服务器，请检查网络或使用手机端隐形按钮。");
+            }
+        }
+
+        // 语音播报
+        let lastText = "";
+        function speakText(text) {
+            if(text === lastText && text === "无设备") return; // 防止重复播报
+            lastText = text;
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'zh-CN';
+            window.speechSynthesis.speak(u);
+        }
+
+        // 页面启动
+        function startDisplay() {
+            setupView('display-view');
+            initAudio();
+            // 尝试连接网络，连不上也不影响隐形按钮
+            connectMQTT(true); 
+            // 必须把 Topic 存到 localStorage 或者通过 alert 告诉控制端？
+            // 简化版：我们硬编码一个固定的 Topic 用于演示，防止两端不一致
+            // 实际上为了演示方便，这里我们改回固定 Topic
+        }
+
+        function startController() {
+            setupView('control-view');
+            connectMQTT(false);
+        }
+
+        function setupView(id) {
+            document.getElementById('role-select').style.display = 'none';
+            document.getElementById(id).style.display = 'flex';
+            if(id === 'control-view') document.getElementById(id).style.display = 'block';
+        }
+
+        // 这里覆盖上面的随机Topic，使用固定Topic保证两端一致
+        // 注意：如果是公共演示，建议改一下下面的 "my_demo_123" 避免串台
+        topic = "demo/class/student_presentation_001"; 
+
+        // 音频可视化 (保持原样，效果很好)
         function initAudio() {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const audioCtx = new AudioContext();
-            
             navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
                 const source = audioCtx.createMediaStreamSource(stream);
                 const analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 256;
                 source.connect(analyser);
-
-                const bufferLength = analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
-                
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 const canvas = document.getElementById('visualizer');
-                const canvasCtx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d');
                 
-                // 监听窗口大小改变，重置画布尺寸（解决模糊和拉伸问题）
-                function resize() {
-                    canvas.width = canvas.offsetWidth;
-                    canvas.height = canvas.offsetHeight;
-                }
-                window.addEventListener('resize', resize);
-                resize(); // 初始化调用一次
+                function resize() { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
+                window.addEventListener('resize', resize); resize();
 
                 function draw() {
                     requestAnimationFrame(draw);
                     analyser.getByteFrequencyData(dataArray);
-
-                    // 每次绘制前清空画布
-                    canvasCtx.fillStyle = '#111'; 
-                    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    const barWidth = (canvas.width / bufferLength) * 2.5;
-                    let barHeight;
+                    ctx.fillStyle = '#111'; ctx.fillRect(0,0,canvas.width,canvas.height);
+                    const barW = (canvas.width / dataArray.length) * 2.5;
                     let x = 0;
-
-                    for(let i = 0; i < bufferLength; i++) {
-                        // 动态计算高度，防止超出
-                        barHeight = (dataArray[i] / 255) * canvas.height; 
-                        
-                        const r = barHeight + (25 * (i/bufferLength));
-                        const g = 250 * (i/bufferLength);
-                        const b = 50;
-
-                        canvasCtx.fillStyle = `rgb(${r},${g},${b})`;
-                        canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-
-                        x += barWidth + 1;
+                    for(let i=0; i<dataArray.length; i++) {
+                        const h = (dataArray[i]/255)*canvas.height;
+                        ctx.fillStyle = `rgb(${h+50}, ${250*(i/dataArray.length)}, 50)`;
+                        ctx.fillRect(x, canvas.height-h, barW, h);
+                        x += barW+1;
                     }
                 }
                 draw();
-            }).catch(err => {
-                console.error(err);
-                alert("无法获取麦克风权限，无法展示声纹。");
-            });
+            }).catch(e => console.error(e));
         }
     </script>
 </body>

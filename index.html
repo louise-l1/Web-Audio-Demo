@@ -3,77 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>电器声纹检测演示</title>
+    <title>声纹演示 V6 语音增强版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #000; color: #fff; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* 布局样式 */
+        /* 布局 */
         #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 20; background: #222; position: absolute; top:0; left:0; }
         button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 8px; border: none; background: #007bff; color: white; }
         
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
         
-        /* 隐形点击层 (四角作弊) */
-        #secret-layer { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; 
-            display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+        /* 隐形按钮层 (防翻车) */
+        #secret-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .secret-zone {}
+
+        /* 语音测试按钮 (新增) */
+        #voice-test-btn {
+            position: absolute; top: 10px; right: 10px; z-index: 100;
+            background: rgba(255,255,255,0.2); border: 1px solid #fff; color: #fff;
+            padding: 5px 10px; font-size: 12px; border-radius: 4px; cursor: pointer;
         }
-        .secret-zone { } /* 调试时加 border: 1px solid red; 看位置 */
 
         #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #111; border-bottom: 2px solid #333; }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
         
-        #text-container { height: 40%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; background: #000; z-index: 5; }
-        #status-title { font-size: 18px; color: #888; margin-bottom: 10px; }
-        #status-result { font-size: 32px; font-weight: bold; color: #0f0; }
+        #text-container { height: 40%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 5; }
+        #status-result { font-size: 32px; font-weight: bold; color: #0f0; margin-top: 10px;}
         
-        #control-view { display: none; padding: 20px; text-align: center; height: 100%; overflow-y: auto; background: #222; }
-        .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 20px; background: #333; border: 1px solid #555; }
+        #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #222; }
+        .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 20px; background: #333; border: 1px solid #555; color: #fff;}
         
         .overlay-text { position: absolute; top: 10px; left: 10px; color: #0f0; font-family: monospace; font-size: 12px; z-index: 5;}
-        
-        /* 状态条 */
-        #connection-status { position: fixed; top: 0; right: 0; background: #555; padding: 5px 10px; font-size: 12px; z-index: 100; color: #fff; border-bottom-left-radius: 5px;}
+        #debug-status { position: fixed; top:0; left:0; width:100%; text-align:center; font-size:10px; color:#555; pointer-events:none; z-index:100;}
     </style>
 </head>
 <body>
 
-    <div id="connection-status">等待操作</div>
+    <div id="debug-status">V6 语音就绪</div>
 
-    <!-- 1. 角色选择 -->
+    <!-- 角色选择 -->
     <div id="role-select">
-        <h2>模式选择 v4.0</h2>
+        <h2>模式选择 V6</h2>
         <button onclick="startDisplay()">手机展示端</button>
-        <button onclick="startController()">电脑控制端</button>
-        <div style="margin-top: 20px; font-size: 12px; color: #888; text-align: center;">
-            <p>如果连不上服务器，请使用备用方案：</p>
-            <p>手机屏幕四角点击可直接触发结果</p>
-        </div>
+        <button onclick="startController()">控制端 (平板/电脑)</button>
+        <p style="color:#aaa; font-size:12px; margin-top:20px;">点击展示端时会自动播放声音测试</p>
     </div>
 
-    <!-- 2. 展示端 -->
+    <!-- 展示端 -->
     <div id="display-view">
+        <!-- 应急语音开关 -->
+        <button id="voice-test-btn" onclick="speakText('声音正常', true)">🔊 测试声音</button>
+
         <div id="secret-layer">
-            <div class="secret-zone" onclick="handleSecretClick('fridge')"></div> <!-- 左上 -->
-            <div class="secret-zone" onclick="handleSecretClick('lamp')"></div>   <!-- 右上 -->
-            <div class="secret-zone" onclick="handleSecretClick('abnormal')"></div> <!-- 左下 -->
-            <div class="secret-zone" onclick="handleSecretClick('reset')"></div>    <!-- 右下 -->
+            <div class="secret-zone" onclick="handleSecretClick('fridge')"></div>
+            <div class="secret-zone" onclick="handleSecretClick('lamp')"></div>
+            <div class="secret-zone" onclick="handleSecretClick('abnormal')"></div>
+            <div class="secret-zone" onclick="handleSecretClick('reset')"></div>
         </div>
         <div id="canvas-container">
             <div class="overlay-text">AI Acoustic Analysis // LIVE</div>
             <canvas id="visualizer"></canvas>
         </div>
         <div id="text-container">
-            <div id="status-title">解析结果</div>
+            <div style="color:#888;">识别结果</div>
             <div id="status-result">等待检测...</div>
         </div>
     </div>
 
-    <!-- 3. 控制端 -->
+    <!-- 控制端 -->
     <div id="control-view">
-        <h2 style="color:#fff">控制台</h2>
-        <div id="debug-info" style="color: #666; font-size: 12px; margin-bottom: 10px;">准备就绪</div>
+        <h3 style="color:#aaa">远程控制台</h3>
         <button class="ctrl-btn" onclick="sendMqttCommand('reset')">无设备 (复位)</button>
         <button class="ctrl-btn" style="color:#0f0" onclick="sendMqttCommand('fridge')">电冰箱 - 正常</button>
         <button class="ctrl-btn" style="color:#ff0" onclick="sendMqttCommand('lamp')">台灯 - 工作中</button>
@@ -81,139 +81,105 @@
     </div>
 
     <script>
-        // --- 核心配置 (如果连不上，可以尝试切换下面注释掉的 Server) ---
-        
-        // 方案A: EMQX (首选，速度快)
+        // --- 确保这里和你的控制端 Topic 一致 ---
+        const myTopic = "demo/class/final_voice_v6"; 
         const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
         
-        // 方案B: HiveMQ (备用，如果A连不上，把上面注释掉，用下面这行)
-        // const mqttConfig = { host: "broker.hivemq.com", port: 8884, path: "/mqtt" };
-
-        // --- 关键修改：固定 Topic，保证电脑手机绝对一致 ---
-        // 请随意修改下方字符串，比如改成你名字的拼音，防止和别人重复
-        const topic = "demo/my_unique_id_99999/control"; 
-
         let client;
-        let isMqttConnected = false;
+        let lastText = "";
+
+        // --- 语音核心逻辑 (核心修改) ---
+        function speakText(text, force = false) {
+            // 防止重复播报，除非强制
+            if(!force && text === lastText && text === "无设备") return;
+            lastText = text;
+
+            // 停止当前正在说的
+            window.speechSynthesis.cancel();
+
+            // 创建语音实例
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'zh-CN'; // 强制中文
+            u.rate = 1.0;     // 语速
+            u.volume = 1.0;   // 音量最大
+            u.pitch = 1.0;    // 音调正常
+
+            // 播放
+            window.speechSynthesis.speak(u);
+            console.log("正在播报:", text);
+        }
 
         // --- 业务逻辑 ---
         function triggerResult(cmd) {
-            let text = "";
-            let color = "#0f0";
-            
+            let text = "", color = "#0f0";
             switch(cmd) {
                 case 'fridge': text = "检测到电冰箱，工作正常"; break;
                 case 'lamp': text = "检测到台灯，工作中"; color = "#ffff00"; break;
                 case 'abnormal': text = "警告：检测到设备异常震动"; color = "#ff0000"; break;
                 case 'reset': text = "无设备"; color = "#888"; break;
             }
-
             const el = document.getElementById('status-result');
-            el.innerText = text;
-            el.style.color = color;
+            el.innerText = text; el.style.color = color;
+            
+            // 触发语音
             speakText(text);
         }
 
+        // --- 隐形按钮 ---
         function handleSecretClick(cmd) {
-            if(navigator.vibrate) navigator.vibrate(50); // 震动反馈
+            if(navigator.vibrate) navigator.vibrate(50);
             triggerResult(cmd);
-            updateStatus("本地触发: " + cmd, "#aaa");
         }
 
-        // --- MQTT 连接逻辑 ---
+        // --- MQTT ---
         function connectMQTT(isReceiver) {
-            const clientID = "client_" + Math.random().toString(16).substr(2, 8);
+            const clientID = "id_" + Math.random().toString(16).substr(2, 8);
             client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
-
-            updateStatus("正在连接服务器...", "orange");
             
             client.connect({
                 useSSL: true,
-                timeout: 5,
                 onSuccess: () => {
-                    isMqttConnected = true;
-                    updateStatus("服务器已连接 (在线)", "#0f0");
-                    if (isReceiver) {
-                        client.subscribe(topic);
-                        console.log("Subscribed to: " + topic);
-                    }
+                    console.log("已连接 MQTT");
+                    if(isReceiver) client.subscribe(myTopic);
                 },
-                onFailure: (e) => {
-                    isMqttConnected = false;
-                    updateStatus("连接失败! 请用屏幕点击", "red");
-                    console.log("Connect Failed:", e);
-                    // 自动重连逻辑
-                    setTimeout(() => { if(!isMqttConnected) connectMQTT(isReceiver); }, 3000);
-                }
+                onFailure: (e) => console.log("连接失败", e)
             });
 
-            client.onConnectionLost = (resp) => {
-                isMqttConnected = false;
-                if (resp.errorCode !== 0) {
-                    updateStatus("连接断开，重连中...", "orange");
-                    setTimeout(() => connectMQTT(isReceiver), 2000);
+            client.onMessageArrived = (msg) => {
+                if(document.getElementById('display-view').style.display === 'flex') {
+                    triggerResult(msg.payloadString);
                 }
             };
-
-            if (isReceiver) {
-                client.onMessageArrived = (msg) => {
-                    triggerResult(msg.payloadString);
-                    updateStatus("收到指令: " + msg.payloadString, "#0f0");
-                };
-            }
         }
 
         function sendMqttCommand(cmd) {
-            const debugEl = document.getElementById('debug-info');
-            if(isMqttConnected) {
+            if(client && client.isConnected()) {
                 const message = new Paho.MQTT.Message(cmd);
-                message.destinationName = topic;
+                message.destinationName = myTopic;
                 client.send(message);
-                debugEl.innerText = "指令已发送: " + cmd + " (" + new Date().toLocaleTimeString() + ")";
-                debugEl.style.color = "#0f0";
-            } else {
-                debugEl.innerText = "发送失败：未连接服务器";
-                debugEl.style.color = "red";
-                alert("电脑未连接到服务器！\n请检查网络，或改用手机点击屏幕演示。");
             }
         }
 
-        function updateStatus(text, color) {
-            const el = document.getElementById('connection-status');
-            el.innerText = text;
-            el.style.background = color === "#0f0" ? "green" : (color === "red" ? "darkred" : "#555");
-        }
-
-        // 语音播报
-        let lastText = "";
-        function speakText(text) {
-            if(text === lastText && text === "无设备") return;
-            lastText = text;
-            window.speechSynthesis.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = 'zh-CN';
-            window.speechSynthesis.speak(u);
-        }
-
-        // 初始化
+        // --- 初始化 (关键修改：点击即解锁声音) ---
         function startDisplay() {
-            setupView('display-view');
+            document.getElementById('role-select').style.display = 'none';
+            document.getElementById('display-view').style.display = 'flex';
+            
+            // 1. 初始化麦克风
             initAudio();
+            // 2. 连接服务器
             connectMQTT(true);
+            // 3. 【关键】强制播放一段空白或提示音，解锁浏览器音频策略
+            speakText("系统初始化完成，声音正常");
         }
 
         function startController() {
-            setupView('control-view');
+            document.getElementById('role-select').style.display = 'none';
+            document.getElementById('control-view').style.display = 'block';
             connectMQTT(false);
         }
 
-        function setupView(id) {
-            document.getElementById('role-select').style.display = 'none';
-            document.getElementById(id).style.display = 'flex';
-            if(id === 'control-view') document.getElementById(id).style.display = 'block';
-        }
-
-        // 音频可视化
+        // --- 音频可视化 ---
         function initAudio() {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const audioCtx = new AudioContext();
@@ -241,7 +207,7 @@
                     }
                 }
                 draw();
-            }).catch(e => console.error(e));
+            });
         }
     </script>
 </body>

@@ -238,7 +238,7 @@
                         // 2. 激进对数 (Log)：
                         // Math.log10(100) = 2; Math.log10(1000) = 3;
                         // 这能把大数值压缩，防止爆表；同时把小数值拉伸
-                        let logVal = Math.log10(boostedVal + 1) * 75; // 系数 75 保证能填满 0-255
+                        let logVal = Math.log10(boostedVal + 1) * 200; // 系数 75 保证能填满 0-255
 
                         // 3. 人工底噪 (Artificial Noise Floor)
                         // 为了让屏幕看起来不空，我们给所有像素加一个基础值

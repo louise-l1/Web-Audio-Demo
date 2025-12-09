@@ -3,55 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V18 (Peak Hold)</title>
+    <title>Spectrogram V19 (Focus Mode)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #000; color: #fff; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* 顶部参数栏 */
-        #app-header {
-            position: absolute; top: 0; left: 0; width: 100%; height: 70px;
-            background: rgba(0,0,0,0.9); border-bottom: 1px solid #d32f2f;
-            z-index: 20; display: flex; flex-direction: column; justify-content: center; padding-left: 15px;
-            pointer-events: auto;
-        }
+        /* === 布局大改：所有控件移到底部 === */
         
-        /* 增益滑块 */
-        #gain-control {
-            display: flex; align-items: center; width: 95%; margin-top: 5px;
+        /* 顶部区域：完全留给 Canvas，仅留一个极小的状态标 */
+        #top-status {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 5px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            z-index: 10; font-size: 10px; color: #666; font-family: monospace; pointer-events: none;
         }
-        #gain-slider { flex: 1; margin: 0 10px; height: 30px; cursor: pointer; }
-        .gain-label { font-size: 10px; color: #aaa; }
-        #gain-value { font-family: monospace; color: #ff5252; width: 35px; text-align: right; font-size: 12px; }
 
+        /* 底部控制面板 */
+        #bottom-panel {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 160px;
+            background: #111; border-top: 1px solid #333;
+            z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;
+            padding-bottom: 10px;
+        }
+
+        /* 增益滑块行 */
+        .control-row { display: flex; align-items: center; width: 90%; justify-content: space-between; }
+        #gain-slider { flex: 1; margin: 0 10px; height: 30px; }
+        .label { font-size: 12px; color: #aaa; min-width: 40px; }
+        #gain-value { color: #ff5252; font-weight: bold; width: 35px; text-align: right; }
+
+        /* 频段选择下拉框 */
+        #freq-select {
+            background: #222; color: #fff; border: 1px solid #444; padding: 5px; border-radius: 4px; font-size: 14px;
+        }
+
+        /* 结果展示行 */
+        #result-row { 
+            width: 100%; text-align: center; background: #000; padding: 5px 0; border-top: 1px solid #222; margin-top: 5px;
+        }
+        #status-result { font-size: 20px; font-weight: bold; color: #ff3333; text-shadow: 0 0 5px #500; }
+
+        /* 角色选择页 */
         #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #000; position: absolute; top:0; left:0; }
-        
         #mic-select-container { margin: 20px 0; width: 85%; text-align: center; }
-        select { width: 100%; padding: 12px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-size: 16px; margin-top: 5px; outline: none; }
-        
-        button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 4px; border: none; background: #d32f2f; color: #fff; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }
+        select { width: 100%; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-size: 16px; margin-top: 5px; outline: none; }
+        button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 4px; border: none; background: #d32f2f; color: #fff; font-weight: bold; }
         
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
-        #secret-layer { position: absolute; top: 70px; left: 0; width: 100%; height: calc(100% - 70px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        #secret-layer { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 160px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
         .secret-zone {}
 
-        #record-indicator {
-            position: absolute; bottom: 140px; right: 20px; width: 40px; height: 40px;
-            background: rgba(0,0,0,0.8); border-radius: 50%; border: 2px solid #ff5252;
-            display: flex; align-items: center; justify-content: center; z-index: 20;
-        }
-        #record-dot { width: 16px; height: 16px; background: #f00; border-radius: 50%; animation: blink 1.5s infinite; }
-        @keyframes blink { 0% {opacity: 1;} 50% {opacity: 0.3;} 100% {opacity: 1;} }
-
-        /* 画布背景纯黑 */
-        #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #000; }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-        
-        #text-container { 
-            height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            background: #000; z-index: 10; border-top: 1px solid #222; 
-        }
-        #status-result { font-size: 24px; font-weight: bold; color: #ff3333; margin-top: 5px; text-shadow: 0 0 10px #800; }
+        /* 画布填满剩余空间 */
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 160px); background: #000; }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
         
         #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #111; padding-top: 60px;}
         .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 20px; background: #222; border: 1px solid #444; color: #fff;}
@@ -60,22 +63,15 @@
 </head>
 <body>
 
-    <div id="app-header">
-        <div style="font-size: 12px; color: #888; margin-left: 5px;">SIGNAL GAIN (灵敏度调节)</div>
-        <div id="gain-control">
-            <span class="gain-label">MIN</span>
-            <!-- 默认值给高一点 30，最大100 -->
-            <input type="range" id="gain-slider" min="1" max="100" value="30" oninput="updateGainDisplay(this.value)">
-            <span class="gain-label">MAX</span>
-            <span id="gain-value">x30</span>
-        </div>
-    </div>
+    <!-- 顶部极简状态 -->
+    <div id="top-status">V19 IMMERSIVE | Bluetooth Optimized</div>
 
+    <!-- 角色选择 -->
     <div id="role-select">
-        <h2 style="color:#ff5252">V18 峰值锁定版</h2>
+        <h2 style="color:#ff5252">V19 沉浸聚焦版</h2>
         
         <div id="mic-select-container">
-            <label for="audio-input" style="color:#666; font-size:12px;">INPUT SOURCE</label>
+            <label for="audio-input" style="color:#666; font-size:12px;">INPUT DEVICE</label>
             <select id="audio-input">
                 <option value="default">默认麦克风 (Default)</option>
             </select>
@@ -88,28 +84,52 @@
         <button onclick="startController()" style="background:#222; margin-top:30px; border:1px solid #444;">控制端</button>
     </div>
 
+    <!-- 展示端 -->
     <div id="display-view">
-        <button onclick="speakText('Active', true)" style="position:absolute; top:80px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">隐形激活</button>
+        <button onclick="speakText('Active', true)" style="position:absolute; top:10px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">隐形激活</button>
 
-        <div id="record-indicator"><div id="record-dot"></div></div>
+        <!-- 画布 -->
+        <div id="canvas-container">
+            <canvas id="visualizer"></canvas>
+        </div>
 
+        <!-- 隐形按钮覆盖在画布上 -->
         <div id="secret-layer">
             <div class="secret-zone" onclick="handleSecretClick('fridge')"></div>
             <div class="secret-zone" onclick="handleSecretClick('lamp')"></div>
             <div class="secret-zone" onclick="handleSecretClick('abnormal')"></div>
             <div class="secret-zone" onclick="handleSecretClick('reset')"></div>
         </div>
-        
-        <div id="canvas-container">
-            <canvas id="visualizer"></canvas>
-        </div>
-        
-        <div id="text-container">
-            <div style="color:#444; font-size: 10px; font-family: monospace;">ANALYSIS RESULT</div>
-            <div id="status-result">STANDBY</div>
+
+        <!-- 底部控制面板 (不遮挡顶部信号) -->
+        <div id="bottom-panel">
+            <!-- 结果展示 -->
+            <div id="result-row">
+                <div id="status-result">STANDBY</div>
+            </div>
+
+            <!-- 频段聚焦控制 -->
+            <div class="control-row">
+                <span class="label">视野</span>
+                <select id="freq-select" onchange="updateFreqRange(this.value)">
+                    <option value="full">全频段 (0-22kHz)</option>
+                    <option value="high" selected>高频特写 (8k-22kHz)</option> <!-- 默认选中高频，解决顶部看不清的问题 -->
+                    <option value="low">低频特写 (0-1kHz)</option>
+                    <option value="mid">人声频段 (300-4kHz)</option>
+                </select>
+                <span class="label" style="text-align:right">ZOOM</span>
+            </div>
+
+            <!-- 增益控制 -->
+            <div class="control-row">
+                <span class="label">灵敏度</span>
+                <input type="range" id="gain-slider" min="1" max="100" value="30" oninput="updateGainDisplay(this.value)">
+                <span id="gain-value">x30</span>
+            </div>
         </div>
     </div>
 
+    <!-- 控制端 -->
     <div id="control-view">
         <h3 style="color:#aaa">控制台</h3>
         <button class="ctrl-btn" onclick="sendMqttCommand('reset')">无设备 (复位)</button>
@@ -119,21 +139,27 @@
     </div>
 
     <script>
-        const myTopic = "demo/class/v18_peak_hold"; 
+        const myTopic = "demo/class/v19_focus_mode"; 
         const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
         let client;
         let lastText = "";
         
-        // 增益控制
+        // 状态变量
         let manualGain = 30;
+        let freqMode = 'high'; // 默认高频聚焦
+
         function updateGainDisplay(val) {
             manualGain = parseInt(val);
             document.getElementById('gain-value').innerText = "x" + manualGain;
         }
 
+        function updateFreqRange(val) {
+            freqMode = val;
+            // 可以在这里加个提示，比如“切换视野...”
+        }
+
         async function getMicPermission() {
             try {
-                // 兼容性请求
                 await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const select = document.getElementById('audio-input');
@@ -156,13 +182,10 @@
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const audioCtx = new AudioContext();
             
-            // 使用 ideal 兼容蓝牙，但关闭降噪
             const constraints = { 
                 audio: { 
                     deviceId: deviceId !== 'default' ? { ideal: deviceId } : undefined,
-                    echoCancellation: false, 
-                    noiseSuppression: false, 
-                    autoGainControl: false 
+                    echoCancellation: false, noiseSuppression: false, autoGainControl: false 
                 } 
             };
             
@@ -179,24 +202,14 @@
                 const canvas = document.getElementById('visualizer');
                 const ctx = canvas.getContext('2d', { alpha: false });
 
-                // V18 调色板：仿截图 Galmiza 风格
-                // 纯黑 -> 暗红 -> 鲜红 -> 亮黄/白
+                // V18 调色板
                 const colorPalette = [];
                 for (let i = 0; i < 256; i++) {
                     let r=0, g=0, b=0;
-                    if (i < 20) { 
-                        // 0-20: 死区，纯黑 (去底噪)
-                        r=0; g=0; b=0; 
-                    } else if (i < 100) { 
-                        // 20-100: 暗红细节
-                        r = (i - 20) * 2; 
-                    } else if (i < 200) { 
-                        // 100-200: 鲜红
-                        r = 160 + (i - 100) * 0.95; 
-                    } else { 
-                        // 200+: 爆亮 (黄白)
-                        r = 255; g = (i - 200) * 4; b = (i - 200) * 2;
-                    }
+                    if (i < 20) { r=0; g=0; b=0; } 
+                    else if (i < 100) { r = (i - 20) * 2; } 
+                    else if (i < 200) { r = 160 + (i - 100) * 0.95; } 
+                    else { r = 255; g = (i - 200) * 4; b = (i - 200) * 2; }
                     colorPalette[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
                 }
 
@@ -215,58 +228,69 @@
                     const w = canvas.width;
                     const h = canvas.height;
                     
-                    // 1. 滚动
+                    // 滚动
                     ctx.drawImage(canvas, 1, 0, w - 1, h, 0, 0, w - 1, h);
 
                     // ==========================================
-                    // 🔴 V18 核心：峰值锁定绘图 (解决细线丢失) 🔴
+                    // 🔴 V19 核心：频段映射 (Focus Mode) 🔴
                     // ==========================================
                     
-                    // 我们不是简单地由像素 y 找一个频率点
-                    // 而是找出这一个像素代表的“频率范围”内的最大值
+                    // 定义显示的频率范围 (以 Bin Index 为单位，总共 1024)
+                    // 假设采样率 44.1k -> Nyquist 22k -> 1024 bins
+                    // 1 bin ≈ 21.5 Hz
                     
+                    let startIdx = 0;
+                    let endIdx = 1023;
+
+                    if (freqMode === 'full') {
+                        startIdx = 0; endIdx = 1023;
+                    } else if (freqMode === 'high') {
+                        // 8kHz ~ 22kHz
+                        // 8000 / 21.5 ≈ 372
+                        startIdx = 370; endIdx = 1023;
+                    } else if (freqMode === 'low') {
+                        // 0 ~ 1kHz
+                        // 1000 / 21.5 ≈ 46
+                        startIdx = 0; endIdx = 50; 
+                    } else if (freqMode === 'mid') {
+                        // 300 ~ 4kHz
+                        startIdx = 14; endIdx = 186;
+                    }
+
+                    const rangeSize = endIdx - startIdx;
+
                     for (let y = 0; y < h; y++) {
-                        // 计算当前像素 y 对应的频率范围
-                        // 注意：频谱图低频在下，高频在上
-                        // y=h (底) -> index=0; y=0 (顶) -> index=1023
+                        // 将屏幕高度 y 映射到 [startIdx, endIdx] 范围内
                         
-                        // 计算覆盖的频率 Bin 索引范围
+                        // y=h (底) -> range_min; y=0 (顶) -> range_max
                         const percentStart = 1 - ((y + 1) / h);
                         const percentEnd = 1 - (y / h);
                         
-                        let startBin = Math.floor(percentStart * (bufferLength - 1));
-                        let endBin = Math.ceil(percentEnd * (bufferLength - 1));
-                        
-                        // 边界保护
-                        if (startBin < 0) startBin = 0;
-                        if (endBin >= bufferLength) endBin = bufferLength - 1;
-                        if (endBin < startBin) endBin = startBin;
+                        // 在裁剪后的范围内寻找对应的 Bin
+                        let binMin = startIdx + Math.floor(percentStart * rangeSize);
+                        let binMax = startIdx + Math.ceil(percentEnd * rangeSize);
 
-                        // 🔍 峰值搜索 (Max Pooling)
-                        // 在这个像素覆盖的频率范围内，寻找最强的信号
+                        // 边界保护
+                        if (binMin < startIdx) binMin = startIdx;
+                        if (binMax > endIdx) binMax = endIdx;
+                        if (binMax < binMin) binMax = binMin;
+
+                        // 🔍 峰值锁定 (Peak Hold)
                         let maxVal = 0;
-                        for (let k = startBin; k <= endBin; k++) {
-                            if (dataArray[k] > maxVal) maxVal = dataArray[k];
+                        for (let k = binMin; k <= binMax; k++) {
+                            // 安全检查
+                            if (k < bufferLength) {
+                                if (dataArray[k] > maxVal) maxVal = dataArray[k];
+                            }
                         }
                         
-                        // --- 信号处理 ---
-
-                        // 1. 防断连填充 (给一点极其微弱的底值，防止完全黑屏卡顿感)
+                        // 信号处理 (V18逻辑)
                         if (maxVal === 0) maxVal = 1; 
-
-                        // 2. 手动增益放大
-                        // 将原始 0-255 的值，乘以滑块倍数 (1-100)
-                        // 比如微弱信号 2 * 30倍 = 60 (可见了)
                         let boostedVal = maxVal * (manualGain / 2.5);
-
-                        // 3. 对数映射 (让弱信号更明显)
                         let logVal = Math.log10(boostedVal + 1) * 85;
-
-                        // 4. 颜色映射
                         if(logVal > 255) logVal = 255;
-                        ctx.fillStyle = colorPalette[Math.floor(logVal)];
                         
-                        // 绘制
+                        ctx.fillStyle = colorPalette[Math.floor(logVal)];
                         ctx.fillRect(w - 1, y, 1, 1);
                     }
                 }

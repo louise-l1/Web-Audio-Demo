@@ -3,45 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V23 (WAV Player)</title>
+    <title>Spectrogram V31 (Realtime + Bypass)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
-        body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
+        body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* 顶部参数栏 */
+        /* 顶部控制栏 */
         #app-header {
-            position: absolute; top: 0; left: 0; width: 100%; height: 70px;
-            background: #e8e8e8; border-bottom: 1px solid #bbb;
-            z-index: 20; display: flex; flex-direction: column; justify-content: center; padding-left: 15px;
+            position: absolute; top: 0; left: 0; width: 100%; height: 160px;
+            background: #e8e8e8; border-bottom: 1px solid #999;
+            z-index: 20; display: flex; flex-direction: column; justify-content: center; padding: 0 15px; box-sizing: border-box;
         }
-        .app-title { font-size: 14px; font-weight: bold; color: #333; }
-        
-        /* 倍率控制器 */
-        #scale-control { display: flex; align-items: center; font-size: 12px; margin-top: 5px; color: #555; }
-        select#scale-select { padding: 2px; margin-left: 5px; font-size: 12px; border: 1px solid #999; border-radius: 3px;}
+
+        /* 核心开关 */
+        .switch-container { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; background: #fff; padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        .switch-label { font-weight: bold; font-size: 14px; }
+        .toggle-btn { 
+            padding: 5px 15px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer;
+            background: #ccc; color: #555; 
+        }
+        .toggle-btn.active { background: #0078d7; color: white; }
+
+        /* 参数滑块 */
+        .param-row { display: flex; align-items: center; margin: 4px 0; width: 100%; font-size: 12px; font-weight: bold; color: #444; }
+        .param-label { width: 90px; text-align: right; margin-right: 10px; }
+        input[type="range"] { flex: 1; height: 5px; cursor: pointer; }
+        .param-val { width: 35px; text-align: right; font-family: monospace; color: #0078d7; }
 
         /* 角色选择 */
-        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; overflow-y: auto; }
+        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; }
         
-        .upload-card {
-            background: #f5f5f5; padding: 15px; border-radius: 8px; border: 1px solid #ddd; width: 85%; margin-bottom: 15px; text-align: left;
-        }
-        .upload-label { font-weight: bold; display: block; margin-bottom: 5px; color: #444; }
-        .upload-tip { font-size: 10px; color: #888; margin-bottom: 5px; }
-        input[type="file"] { width: 100%; font-size: 12px; }
-
-        button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #e1e1e1; color: #333; font-weight: bold; }
-        button.primary { background: #0078d7; color: white; border: none; width: 80%; padding: 15px; }
+        #mic-select-container { margin: 20px 0; width: 85%; text-align: center; }
+        select { width: 100%; padding: 10px; background: #f0f0f0; color: #333; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; margin-top: 5px; outline: none; }
+        
+        button.start-btn { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; border: none; background: #0078d7; color: white; font-weight: bold; width: 80%; }
+        button.ctrl-btn-start { background: #666; color: #fff; padding: 10px; width: 80%; border:none; border-radius: 4px; margin-top: 20px; }
 
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
-        #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #fff; border-top: 1px solid #999; }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-
-        /* 标尺 */
-        .ruler-label { position: absolute; left: 5px; font-size: 10px; color: #000; background: rgba(255,255,255,0.7); padding: 1px 3px; border-radius: 2px; font-family: monospace; z-index: 10; pointer-events: none;}
         
-        #text-container { height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f0f0f0; z-index: 10; border-top: 1px solid #ccc; }
-        #status-result { font-size: 22px; font-weight: bold; color: #333; margin-top: 5px; }
+        /* 隐形按钮 */
+        #secret-layer { position: absolute; top: 160px; left: 0; width: 100%; height: calc(100% - 160px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .secret-zone {}
+
+        /* 画布 */
+        #canvas-container { 
+            position: absolute; top: 160px; left: 45px; 
+            width: calc(100% - 45px); height: calc(100% - 160px - 40px);
+            background: #fff; border-left: 1px solid #666; border-bottom: 1px solid #666;
+        }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+        /* Y轴标尺 */
+        #y-axis {
+            position: absolute; top: 160px; left: 0; width: 45px; height: calc(100% - 200px);
+            background: #dcdcdc; font-family: monospace; font-size: 10px; color: #333;
+            display: flex; flex-direction: column; justify-content: space-between; text-align: right; padding-right: 4px; padding-top: 5px; padding-bottom: 5px;
+        }
+        
+        #text-container { 
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 40px;
+            display: flex; align-items: center; justify-content: center; 
+            background: #e0e0e0; z-index: 10; border-top: 1px solid #ccc; 
+        }
+        #status-result { font-size: 18px; font-weight: bold; color: #333; }
         
         #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #eee; padding-top: 80px;}
         .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 18px; background: #fff; border: 1px solid #ccc; color: #333; border-radius: 4px; }
@@ -49,244 +73,329 @@
 </head>
 <body>
 
-    <!-- 音频播放器核心 -->
-    <audio id="audio-player" loop crossOrigin="anonymous"></audio>
-
-    <!-- 顶部参数 -->
     <div id="app-header">
-        <div class="app-title">Spectrogram V23 (WAV Support)</div>
-        <div id="scale-control">
-            标尺显示倍率: 
-            <select id="scale-select" onchange="updateRuler(this.value)">
-                <option value="1">1x (真实 22kHz)</option>
-                <option value="2">2x (仿真 44kHz)</option>
-                <option value="4" selected>4x (仿真 88kHz)</option>
-                <option value="8">8x (仿真 176kHz)</option>
+        <!-- 核心开关 -->
+        <div class="switch-container">
+            <span class="switch-label">信号增强处理 (DSP):</span>
+            <button id="dsp-btn" class="toggle-btn active" onclick="toggleDSP()">已开启 (ON)</button>
+        </div>
+        
+        <!-- 增益 (Gain) -->
+        <div class="param-row">
+            <span class="param-label">全局增益:</span>
+            <input type="range" id="p-gain" min="0" max="120" value="60" oninput="updateParams()">
+            <span id="v-gain" class="param-val">60</span>
+        </div>
+
+        <!-- 高频提升 (Boost) -->
+        <div class="param-row">
+            <span class="param-label" style="color:#d32f2f">高频补偿:</span>
+            <input type="range" id="p-boost" min="0" max="60" value="30" oninput="updateParams()">
+            <span id="v-boost" class="param-val">30</span>
+        </div>
+
+        <!-- 阈值 (Cut) -->
+        <div class="param-row">
+            <span class="param-label">底噪过滤:</span>
+            <input type="range" id="p-cut" min="0" max="100" value="40" oninput="updateParams()">
+            <span id="v-cut" class="param-val">40</span>
+        </div>
+    </div>
+
+    <!-- 角色选择 -->
+    <div id="role-select">
+        <h2 style="color:#333">V31 实时增强版</h2>
+        
+        <div id="mic-select-container">
+            <label for="audio-input" style="color:#666; font-size:12px;">选择麦克风 (支持蓝牙/有线):</label>
+            <select id="audio-input">
+                <option value="default">默认设备 (Default)</option>
             </select>
         </div>
-        <div style="font-size:10px; color:#888; margin-top:2px;">*若在Audacity降速4倍，请选 4x 以还原视觉</div>
+        
+        <button class="start-btn" onclick="getMicPermissionAndStart()">1. 获取权限并启动</button>
+        <button class="ctrl-btn-start" onclick="startController()">我是控制端 (遥控)</button>
     </div>
 
-    <!-- 角色选择/文件上传 -->
-    <div id="role-select">
-        <h2 style="color:#333">V23 高保真 WAV 版</h2>
-        
-        <div class="upload-card">
-            <span class="upload-label">1. 冰箱 WAV (低频)</span>
-            <div class="upload-tip">建议 Audacity 降速处理以保留超声波细节</div>
-            <input type="file" id="file-fridge" accept=".wav, .mp3">
-        </div>
-
-        <div class="upload-card">
-            <span class="upload-label">2. 台灯 WAV (高频)</span>
-            <input type="file" id="file-lamp" accept=".wav, .mp3">
-        </div>
-
-        <div class="upload-card">
-            <span class="upload-label">3. 异常 WAV (干扰)</span>
-            <input type="file" id="file-abnormal" accept=".wav, .mp3">
-        </div>
-        
-        <button class="primary" onclick="startDisplay()">启动展示端</button>
-        <button onclick="startController()" style="margin-top:20px; font-size: 14px;">启动控制端 (遥控)</button>
-    </div>
-
-    <!-- 展示界面 -->
+    <!-- 展示端 -->
     <div id="display-view">
-        <button onclick="initAudioContext()" style="position:absolute; top:70px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">解锁</button>
+        <div id="secret-layer">
+            <div class="secret-zone" onclick="triggerResult('fridge')"></div>
+            <div class="secret-zone" onclick="triggerResult('lamp')"></div>
+            <div class="secret-zone" onclick="triggerResult('abnormal')"></div>
+            <div class="secret-zone" onclick="triggerResult('reset')"></div>
+        </div>
+
+        <div id="y-axis">
+            <span>22k</span>
+            <span>16k</span>
+            <span>11k</span>
+            <span>5k</span>
+            <span>0Hz</span>
+        </div>
 
         <div id="canvas-container">
-            <!-- 标尺 (动态更新) -->
-            <div id="ruler-top" class="ruler-label" style="top: 5px;">88 kHz</div>
-            <div id="ruler-mid1" class="ruler-label" style="top: 25%;">66 kHz</div>
-            <div id="ruler-mid2" class="ruler-label" style="top: 50%;">44 kHz</div>
-            <div id="ruler-mid3" class="ruler-label" style="top: 75%;">22 kHz</div>
-            <div class="ruler-label" style="bottom: 5px;">0 Hz</div>
             <canvas id="visualizer"></canvas>
         </div>
         
         <div id="text-container">
-            <div style="color:#666; font-size: 10px;">STATUS</div>
-            <div id="status-result">NO SIGNAL</div>
+            <div id="status-result">等待信号...</div>
         </div>
     </div>
 
-    <!-- 控制界面 -->
+    <!-- 控制端 -->
     <div id="control-view">
-        <h3 style="color:#666">播放控制</h3>
-        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">■ 停止播放</button>
-        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">▶ 播放：电冰箱</button>
-        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">▶ 播放：台灯</button>
-        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">▶ 播放：异常</button>
+        <h3>遥控面板</h3>
+        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">无设备 (Reset)</button>
+        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">电冰箱 (Normal)</button>
+        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">台灯 (High Freq)</button>
+        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">异常 (Warning)</button>
+        <hr>
+        <button class="ctrl-btn" style="background:#ddd; font-size:14px;" onclick="toggleRemoteDSP()">远程切换增强开关</button>
     </div>
 
     <script>
-        const myTopic = "demo/class/v23_wav_playback"; 
+        const myTopic = "demo/class/v31_realtime_mix"; 
         const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
         let client;
         let lastText = "";
         
-        // 音频系统
         let audioCtx, analyser, sourceNode;
-        const audioPlayer = document.getElementById('audio-player');
-        let currentScale = 4; // 默认4倍倍率
+        
+        // 参数
+        let isDSPEnabled = true;
+        let paramGain = 60;
+        let paramBoost = 30;
+        let paramCut = 40;
 
-        // 文件存储
-        const fileURLs = { fridge: null, lamp: null, abnormal: null };
+        function updateParams() {
+            paramGain = parseInt(document.getElementById('p-gain').value);
+            paramBoost = parseInt(document.getElementById('p-boost').value);
+            paramCut = parseInt(document.getElementById('p-cut').value);
 
-        // 监听文件上传
-        ['fridge', 'lamp', 'abnormal'].forEach(key => {
-            document.getElementById(`file-${key}`).addEventListener('change', function(e){
-                if(e.target.files[0]) fileURLs[key] = URL.createObjectURL(e.target.files[0]);
-            });
-        });
-
-        // --- 1. 标尺更新逻辑 ---
-        function updateRuler(val) {
-            currentScale = parseInt(val);
-            const base = 22000; // 假设基准是 22kHz (44.1k/2)
-            const max = base * currentScale;
-            
-            document.getElementById('ruler-top').innerText = (max / 1000).toFixed(0) + " kHz";
-            document.getElementById('ruler-mid1').innerText = (max * 0.75 / 1000).toFixed(0) + " kHz";
-            document.getElementById('ruler-mid2').innerText = (max * 0.5 / 1000).toFixed(0) + " kHz";
-            document.getElementById('ruler-mid3').innerText = (max * 0.25 / 1000).toFixed(0) + " kHz";
+            document.getElementById('v-gain').innerText = paramGain;
+            document.getElementById('v-boost').innerText = paramBoost;
+            document.getElementById('v-cut').innerText = paramCut;
         }
 
-        // --- 2. 播放逻辑 ---
-        function playMode(mode) {
-            initAudioContext(); 
-
-            let text = "", color = "#333";
-            let fileToPlay = null;
-
-            switch(mode) {
-                case 'fridge': text = "检测到电冰箱"; color = "#009900"; fileToPlay = fileURLs.fridge; break; 
-                case 'lamp': text = "检测到台灯"; color = "#d4a000"; fileToPlay = fileURLs.lamp; break;
-                case 'abnormal': text = "异常：震动警告"; color = "#cc0000"; fileToPlay = fileURLs.abnormal; break;
-                case 'reset': text = "无信号"; color = "#999"; break;
-            }
-
-            document.getElementById('status-result').innerText = text;
-            document.getElementById('status-result').style.color = color;
-            speakText(text);
-
-            if (mode === 'reset') {
-                audioPlayer.pause();
-                audioPlayer.currentTime = 0;
+        function toggleDSP() {
+            isDSPEnabled = !isDSPEnabled;
+            const btn = document.getElementById('dsp-btn');
+            if (isDSPEnabled) {
+                btn.innerText = "已开启 (ON)";
+                btn.classList.add("active");
+                speakText("增强模式已开启");
             } else {
-                if (fileToPlay) {
-                    audioPlayer.src = fileToPlay;
-                    audioPlayer.play().catch(e => console.log("需交互解锁音频", e));
-                } else {
-                    alert("请先上传对应的 WAV 文件！");
-                }
+                btn.innerText = "已关闭 (OFF)";
+                btn.classList.remove("active");
+                speakText("增强模式已关闭");
             }
         }
 
-        // --- 3. 音频可视化 (Audacity 风格) ---
-        function initAudioContext() {
-            if(!audioCtx) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                audioCtx = new AudioContext();
+        function toggleRemoteDSP() {
+            const payload = JSON.stringify({ type: 'toggleDSP' });
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = myTopic;
+            client.send(message);
+        }
+
+        // --- 1. 获取权限 & 启动 ---
+        async function getMicPermissionAndStart() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const select = document.getElementById('audio-input');
+                select.innerHTML = ''; 
+                let hasAudioInput = false;
+                devices.forEach(device => {
+                    if (device.kind === 'audioinput') {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || `Mic ${select.length + 1}`;
+                        select.appendChild(option);
+                        hasAudioInput = true;
+                    }
+                });
+                
+                // 启动界面
+                document.getElementById('role-select').style.display = 'none';
+                document.getElementById('display-view').style.display = 'flex';
+                
+                // 启动音频
+                initAudioContext(select.value);
+                connectMQTT(true);
+
+            } catch (err) { console.error(err); alert("请允许麦克风权限"); }
+        }
+
+        // --- 2. 实时音频处理 ---
+        function initAudioContext(deviceId) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            
+            const constraints = { 
+                audio: { 
+                    deviceId: deviceId !== 'default' ? { ideal: deviceId } : undefined,
+                    echoCancellation: false, noiseSuppression: false, autoGainControl: false 
+                } 
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+                sourceNode = audioCtx.createMediaStreamSource(stream);
                 analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 2048; 
                 
-                sourceNode = audioCtx.createMediaElementSource(audioPlayer);
+                // 提高精度以获得细腻纹理
+                analyser.fftSize = 4096; 
+                analyser.smoothingTimeConstant = 0.0; // 实时反应
+
                 sourceNode.connect(analyser);
-                sourceNode.connect(audioCtx.destination); 
-                
                 startVisualizer();
-            } else if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+                speakText("系统就绪");
+            }).catch(e => alert("麦克风连接失败"));
         }
 
         function startVisualizer() {
             const canvas = document.getElementById('visualizer');
             const ctx = canvas.getContext('2d', { alpha: false });
             const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
+            const dataArray = new Float32Array(bufferLength);
 
-            // Audacity 配色 (白->蓝->红)
+            // Audacity 风格调色板 (灰白 -> 蓝 -> 红)
             const colorMap = [];
             for (let i = 0; i < 256; i++) {
                 let r, g, b;
                 let val = i / 255.0;
-                if (val < 0.1) { let gray = 255 - (val * 40); r=gray; g=gray; b=gray; } 
-                else if (val < 0.5) { let p = (val - 0.1) / 0.4; r = 100*(1-p); g=100*(1-p); b=200+55*p; } 
-                else if (val < 0.8) { let p = (val - 0.5) / 0.3; r = 150*p+50; g=50*(1-p); b=255-(100*p); } 
-                else { let p = (val - 0.8) / 0.2; r = 255; g=0; b=155*(1-p); }
+                
+                if (val < 0.1) { 
+                    let gray = 250 - (val * 50); r=gray; g=gray; b=gray;
+                } else if (val < 0.4) { 
+                    let p = (val - 0.1) / 0.3; r = 100*(1-p); g = 100*(1-p); b = 255;
+                } else if (val < 0.8) { 
+                    let p = (val - 0.4) / 0.4; r = 200*p + 50; g = 50*(1-p); b = 255;
+                } else { 
+                    let p = (val - 0.8) / 0.2; r = 255; g = 0; b = 255*(1-p); 
+                }
                 colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
             }
 
             function resize() {
                 canvas.width = canvas.parentElement.offsetWidth;
                 canvas.height = canvas.parentElement.offsetHeight;
-                ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width, canvas.height);
+                ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0,0,canvas.width, canvas.height);
             }
             window.addEventListener('resize', resize);
-            resize(); // 初始化标尺
-            updateRuler(document.getElementById('scale-select').value);
+            resize();
 
             function draw() {
                 requestAnimationFrame(draw);
-                analyser.getByteFrequencyData(dataArray);
+                analyser.getFloatFrequencyData(dataArray); // dB: -100 ~ -30
 
                 const w = canvas.width;
                 const h = canvas.height;
                 
-                // 滚动
-                ctx.drawImage(canvas, 2, 0, w - 2, h, 0, 0, w - 2, h);
+                ctx.drawImage(canvas, 1, 0, w - 1, h, 0, 0, w - 1, h);
 
-                // 绘制新列
+                const sampleRate = audioCtx.sampleRate;
+                const nyquist = sampleRate / 2; // 通常 22kHz or 24kHz
+
                 for (let y = 0; y < h; y++) {
-                    const percent = 1 - (y / h); 
-                    const freqIndex = Math.floor(percent * (bufferLength - 1));
-                    let rawVal = dataArray[freqIndex];
+                    // 1. 线性频率映射：0Hz (底) - Nyquist (顶)
+                    const percent = 1 - (y / h);
+                    const targetFreq = percent * nyquist;
 
-                    // 增强显示
-                    let visualVal = rawVal * 1.5;
-                    // 如果停止播放，保留一点点白底噪
-                    if (audioPlayer.paused) visualVal = Math.random() * 5;
+                    const binIndex = Math.floor((targetFreq / nyquist) * bufferLength);
+                    if (binIndex >= bufferLength) continue;
 
-                    if(visualVal > 255) visualVal = 255;
-                    ctx.fillStyle = colorMap[Math.floor(visualVal)];
-                    ctx.fillRect(w - 2, y, 2, 1);
+                    let db = dataArray[binIndex];
+                    if (db === -Infinity) db = -160;
+
+                    let displayVal = 0;
+
+                    if (isDSPEnabled) {
+                        // === 增强模式 (Audacity 仿真) ===
+                        
+                        // 高频补偿: 20dB/dec 模拟
+                        // 1kHz 以下不补偿，1kHz 以上开始补偿
+                        let boostAmount = 0;
+                        if (targetFreq > 1000) {
+                            boostAmount = paramBoost * Math.log10(targetFreq / 1000);
+                        }
+
+                        // 计算总能量
+                        let processedDb = db + paramGain + boostAmount;
+                        
+                        // 映射到 0-255，并应用阈值 (Cut)
+                        let norm = (processedDb + 100) * 2.5; // 把 -100~0 映射到 0~250
+                        norm -= (paramCut * 2); // 减去底噪阈值
+
+                        displayVal = norm;
+                    } else {
+                        // === 原始模式 (Raw) ===
+                        // 仅做最基本的显示，不加 Gain 不加 Boost
+                        // 通常这会非常暗，只有很强的信号才能看见
+                        // 模拟人耳听不到但机器没处理的状态
+                        displayVal = (db + 100) * 1.5; // 稍微提一点点不然纯白
+                    }
+
+                    if (displayVal < 0) displayVal = 0;
+                    if (displayVal > 255) displayVal = 255;
+
+                    ctx.fillStyle = colorMap[Math.floor(displayVal)];
+                    ctx.fillRect(w - 1, y, 1, 1);
                 }
             }
             draw();
         }
 
-        // --- 杂项 ---
-        function startDisplay() {
-            document.getElementById('role-select').style.display = 'none';
-            document.getElementById('display-view').style.display = 'flex';
-            connectMQTT(true);
+        // --- 交互与 MQTT ---
+        function triggerResult(cmd) {
+            let text = "", color = "#333";
+            switch(cmd) {
+                case 'fridge': text = "检测到电冰箱"; color = "#009900"; break; 
+                case 'lamp': text = "检测到台灯"; color = "#d4a000"; break;
+                case 'abnormal': text = "异常：震动警告"; color = "#cc0000"; break;
+                case 'reset': text = "无设备"; color = "#999"; break;
+            }
+            const el = document.getElementById('status-result');
+            el.innerText = text; el.style.color = color;
+            if(cmd !== 'reset') speakText(text);
         }
+
+        function speakText(text) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'zh-CN'; window.speechSynthesis.speak(u);
+        }
+
         function startController() {
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('control-view').style.display = 'block';
             connectMQTT(false);
         }
-        function speakText(text, force = false) {
-            if(!force && text === lastText && text === "无信号") return;
-            lastText = text;
-            window.speechSynthesis.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = 'zh-CN'; window.speechSynthesis.speak(u);
-        }
+
         function connectMQTT(isReceiver) {
             const clientID = "id_" + Math.random().toString(16).substr(2, 8);
             client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
             client.connect({ onSuccess: () => { if(isReceiver) client.subscribe(myTopic); } });
-            client.onMessageArrived = (msg) => { if(document.getElementById('display-view').style.display === 'flex') playMode(msg.payloadString); };
+            client.onMessageArrived = (msg) => { 
+                const payload = JSON.parse(msg.payloadString);
+                // 特殊指令：远程切换 DSP
+                if (payload.type === 'toggleDSP') {
+                    toggleDSP();
+                } else {
+                    // 兼容旧的字符串指令
+                    // 这里其实应该统一发 JSON，但为了简单做了容错
+                    try { triggerResult(msg.payloadString); } catch(e){}
+                }
+            };
         }
         function sendMqttCommand(cmd) {
             if(client && client.isConnected()) {
-                const message = new Paho.MQTT.Message(cmd);
-                message.destinationName = myTopic;
-                client.send(message);
+                const message = new Paho.MQTT.Message(JSON.stringify({ type: 'cmd', val: cmd })); // 这里实际上发啥都行，只要接收端能解析
+                // 为了兼容上面的 triggerResult，我直接发字符串
+                const simpleMsg = new Paho.MQTT.Message(cmd);
+                simpleMsg.destinationName = myTopic;
+                client.send(simpleMsg);
             }
         }
     </script>

@@ -3,257 +3,272 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V21 (Simulation)</title>
+    <title>Spectrogram V23 (WAV Player)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
-        body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #e0e0e0; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
+        body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* 顶部参数栏 (完全复刻 Audacity) */
+        /* 顶部参数栏 */
         #app-header {
-            position: absolute; top: 0; left: 0; width: 100%; height: 60px;
-            background: #f0f0f0; border-bottom: 1px solid #ccc;
+            position: absolute; top: 0; left: 0; width: 100%; height: 70px;
+            background: #e8e8e8; border-bottom: 1px solid #bbb;
             z-index: 20; display: flex; flex-direction: column; justify-content: center; padding-left: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            pointer-events: none;
         }
         .app-title { font-size: 14px; font-weight: bold; color: #333; }
-        .app-params { font-size: 11px; color: #666; margin-top: 4px; font-family: monospace; line-height: 1.4; }
+        
+        /* 倍率控制器 */
+        #scale-control { display: flex; align-items: center; font-size: 12px; margin-top: 5px; color: #555; }
+        select#scale-select { padding: 2px; margin-left: 5px; font-size: 12px; border: 1px solid #999; border-radius: 3px;}
 
         /* 角色选择 */
-        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; }
-        button { padding: 15px 30px; font-size: 18px; margin: 15px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #e1e1e1; color: #333; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        button:active { background: #d1d1d1; }
+        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; overflow-y: auto; }
         
-        #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
-        
-        /* 隐形按钮层 (四个角) */
-        #secret-layer { position: absolute; top: 60px; left: 0; width: 100%; height: calc(100% - 60px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-        .secret-zone {} /* 点击四个角触发不同模式 */
+        .upload-card {
+            background: #f5f5f5; padding: 15px; border-radius: 8px; border: 1px solid #ddd; width: 85%; margin-bottom: 15px; text-align: left;
+        }
+        .upload-label { font-weight: bold; display: block; margin-bottom: 5px; color: #444; }
+        .upload-tip { font-size: 10px; color: #888; margin-bottom: 5px; }
+        input[type="file"] { width: 100%; font-size: 12px; }
 
-        /* 画布背景 */
+        button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #e1e1e1; color: #333; font-weight: bold; }
+        button.primary { background: #0078d7; color: white; border: none; width: 80%; padding: 15px; }
+
+        #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
         #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #fff; border-top: 1px solid #999; }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
         /* 标尺 */
-        .ruler-label { position: absolute; left: 5px; font-size: 10px; color: #000; background: rgba(255,255,255,0.8); padding: 1px 3px; border-radius: 2px; font-family: monospace; z-index: 10; pointer-events: none;}
+        .ruler-label { position: absolute; left: 5px; font-size: 10px; color: #000; background: rgba(255,255,255,0.7); padding: 1px 3px; border-radius: 2px; font-family: monospace; z-index: 10; pointer-events: none;}
         
-        #text-container { 
-            height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            background: #f0f0f0; z-index: 10; border-top: 1px solid #ccc; 
-        }
+        #text-container { height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f0f0f0; z-index: 10; border-top: 1px solid #ccc; }
         #status-result { font-size: 22px; font-weight: bold; color: #333; margin-top: 5px; }
         
         #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #eee; padding-top: 80px;}
         .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 18px; background: #fff; border: 1px solid #ccc; color: #333; border-radius: 4px; }
-        
     </style>
 </head>
 <body>
 
+    <!-- 音频播放器核心 -->
+    <audio id="audio-player" loop crossOrigin="anonymous"></audio>
+
+    <!-- 顶部参数 -->
     <div id="app-header">
-        <div class="app-title">Spectrogram - Audacity Mode</div>
-        <div class="app-params">
-            Algorithm: Frequency (8192) | Window: Hann<br>
-            Range: 20000Hz - 96000Hz | Scale: Linear
+        <div class="app-title">Spectrogram V23 (WAV Support)</div>
+        <div id="scale-control">
+            标尺显示倍率: 
+            <select id="scale-select" onchange="updateRuler(this.value)">
+                <option value="1">1x (真实 22kHz)</option>
+                <option value="2">2x (仿真 44kHz)</option>
+                <option value="4" selected>4x (仿真 88kHz)</option>
+                <option value="8">8x (仿真 176kHz)</option>
+            </select>
         </div>
+        <div style="font-size:10px; color:#888; margin-top:2px;">*若在Audacity降速4倍，请选 4x 以还原视觉</div>
     </div>
 
+    <!-- 角色选择/文件上传 -->
     <div id="role-select">
-        <h2 style="color:#333">V21 演示专用版</h2>
-        <div style="color:#666; font-size:12px; margin-bottom: 20px;">无硬件依赖 · 纯视觉模拟</div>
+        <h2 style="color:#333">V23 高保真 WAV 版</h2>
         
-        <button onclick="startDisplay()" style="background:#0078d7; color:white; border:none;">启动手机展示端</button>
-        <br>
-        <button onclick="startController()">启动控制端</button>
-    </div>
+        <div class="upload-card">
+            <span class="upload-label">1. 冰箱 WAV (低频)</span>
+            <div class="upload-tip">建议 Audacity 降速处理以保留超声波细节</div>
+            <input type="file" id="file-fridge" accept=".wav, .mp3">
+        </div>
 
-    <div id="display-view">
-        <button onclick="speakText('System Ready', true)" style="position:absolute; top:70px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">隐形激活</button>
+        <div class="upload-card">
+            <span class="upload-label">2. 台灯 WAV (高频)</span>
+            <input type="file" id="file-lamp" accept=".wav, .mp3">
+        </div>
 
-        <div id="secret-layer">
-            <!-- 左上: 冰箱 | 右上: 台灯 -->
-            <!-- 左下: 异常 | 右下: 复位 -->
-            <div class="secret-zone" onclick="handleSecretClick('fridge')"></div>
-            <div class="secret-zone" onclick="handleSecretClick('lamp')"></div>
-            <div class="secret-zone" onclick="handleSecretClick('abnormal')"></div>
-            <div class="secret-zone" onclick="handleSecretClick('reset')"></div>
+        <div class="upload-card">
+            <span class="upload-label">3. 异常 WAV (干扰)</span>
+            <input type="file" id="file-abnormal" accept=".wav, .mp3">
         </div>
         
+        <button class="primary" onclick="startDisplay()">启动展示端</button>
+        <button onclick="startController()" style="margin-top:20px; font-size: 14px;">启动控制端 (遥控)</button>
+    </div>
+
+    <!-- 展示界面 -->
+    <div id="display-view">
+        <button onclick="initAudioContext()" style="position:absolute; top:70px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">解锁</button>
+
         <div id="canvas-container">
-            <div class="ruler-label" style="top: 5px;">96 kHz</div>
-            <div class="ruler-label" style="top: 25%;">77 kHz</div>
-            <div class="ruler-label" style="top: 50%;">58 kHz</div>
-            <div class="ruler-label" style="top: 75%;">39 kHz</div>
-            <div class="ruler-label" style="bottom: 5px;">20 kHz</div>
+            <!-- 标尺 (动态更新) -->
+            <div id="ruler-top" class="ruler-label" style="top: 5px;">88 kHz</div>
+            <div id="ruler-mid1" class="ruler-label" style="top: 25%;">66 kHz</div>
+            <div id="ruler-mid2" class="ruler-label" style="top: 50%;">44 kHz</div>
+            <div id="ruler-mid3" class="ruler-label" style="top: 75%;">22 kHz</div>
+            <div class="ruler-label" style="bottom: 5px;">0 Hz</div>
             <canvas id="visualizer"></canvas>
         </div>
         
         <div id="text-container">
-            <div style="color:#666; font-size: 10px;">ANALYSIS RESULT</div>
+            <div style="color:#666; font-size: 10px;">STATUS</div>
             <div id="status-result">NO SIGNAL</div>
         </div>
     </div>
 
+    <!-- 控制界面 -->
     <div id="control-view">
-        <h3 style="color:#666">信号模拟控制台</h3>
-        <p style="font-size:12px; color:#999; margin-bottom:20px;">点击下方按钮，手机将播放对应波形</p>
-        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">无设备 (底噪待机)</button>
-        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">电冰箱 (低频纹理)</button>
-        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">台灯 (高频啸叫)</button>
-        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">异常 (宽频干扰)</button>
+        <h3 style="color:#666">播放控制</h3>
+        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">■ 停止播放</button>
+        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">▶ 播放：电冰箱</button>
+        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">▶ 播放：台灯</button>
+        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">▶ 播放：异常</button>
     </div>
 
     <script>
-        const myTopic = "demo/class/v21_simulation"; 
+        const myTopic = "demo/class/v23_wav_playback"; 
         const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
         let client;
         let lastText = "";
         
-        // 当前模拟的模式
-        let currentMode = 'reset'; // reset, fridge, lamp, abnormal
+        // 音频系统
+        let audioCtx, analyser, sourceNode;
+        const audioPlayer = document.getElementById('audio-player');
+        let currentScale = 4; // 默认4倍倍率
 
-        // --- 核心：Audacity 视觉生成器 ---
-        function initSimulation() {
+        // 文件存储
+        const fileURLs = { fridge: null, lamp: null, abnormal: null };
+
+        // 监听文件上传
+        ['fridge', 'lamp', 'abnormal'].forEach(key => {
+            document.getElementById(`file-${key}`).addEventListener('change', function(e){
+                if(e.target.files[0]) fileURLs[key] = URL.createObjectURL(e.target.files[0]);
+            });
+        });
+
+        // --- 1. 标尺更新逻辑 ---
+        function updateRuler(val) {
+            currentScale = parseInt(val);
+            const base = 22000; // 假设基准是 22kHz (44.1k/2)
+            const max = base * currentScale;
+            
+            document.getElementById('ruler-top').innerText = (max / 1000).toFixed(0) + " kHz";
+            document.getElementById('ruler-mid1').innerText = (max * 0.75 / 1000).toFixed(0) + " kHz";
+            document.getElementById('ruler-mid2').innerText = (max * 0.5 / 1000).toFixed(0) + " kHz";
+            document.getElementById('ruler-mid3').innerText = (max * 0.25 / 1000).toFixed(0) + " kHz";
+        }
+
+        // --- 2. 播放逻辑 ---
+        function playMode(mode) {
+            initAudioContext(); 
+
+            let text = "", color = "#333";
+            let fileToPlay = null;
+
+            switch(mode) {
+                case 'fridge': text = "检测到电冰箱"; color = "#009900"; fileToPlay = fileURLs.fridge; break; 
+                case 'lamp': text = "检测到台灯"; color = "#d4a000"; fileToPlay = fileURLs.lamp; break;
+                case 'abnormal': text = "异常：震动警告"; color = "#cc0000"; fileToPlay = fileURLs.abnormal; break;
+                case 'reset': text = "无信号"; color = "#999"; break;
+            }
+
+            document.getElementById('status-result').innerText = text;
+            document.getElementById('status-result').style.color = color;
+            speakText(text);
+
+            if (mode === 'reset') {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+            } else {
+                if (fileToPlay) {
+                    audioPlayer.src = fileToPlay;
+                    audioPlayer.play().catch(e => console.log("需交互解锁音频", e));
+                } else {
+                    alert("请先上传对应的 WAV 文件！");
+                }
+            }
+        }
+
+        // --- 3. 音频可视化 (Audacity 风格) ---
+        function initAudioContext() {
+            if(!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 2048; 
+                
+                sourceNode = audioCtx.createMediaElementSource(audioPlayer);
+                sourceNode.connect(analyser);
+                sourceNode.connect(audioCtx.destination); 
+                
+                startVisualizer();
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function startVisualizer() {
             const canvas = document.getElementById('visualizer');
             const ctx = canvas.getContext('2d', { alpha: false });
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
 
-            // 生成 Audacity 风格调色板 (白->蓝->红)
+            // Audacity 配色 (白->蓝->红)
             const colorMap = [];
             for (let i = 0; i < 256; i++) {
                 let r, g, b;
                 let val = i / 255.0;
-                
-                if (val < 0.2) { 
-                    // 背景：带杂色的白灰
-                    let gray = 255 - (val * 50); 
-                    r = gray; g = gray; b = gray;
-                } else if (val < 0.5) {
-                    // 弱信号：蓝
-                    let p = (val - 0.2) / 0.3;
-                    r = 100 * (1-p); g = 100 * (1-p); b = 200 + 55 * p;
-                } else if (val < 0.8) {
-                    // 中信号：紫/粉
-                    let p = (val - 0.5) / 0.3;
-                    r = 150 * p + 50; g = 50 * (1-p); b = 255 - (100 * p);
-                } else {
-                    // 强信号：红
-                    let p = (val - 0.8) / 0.2;
-                    r = 255; g = 0; b = 155 * (1-p);
-                }
+                if (val < 0.1) { let gray = 255 - (val * 40); r=gray; g=gray; b=gray; } 
+                else if (val < 0.5) { let p = (val - 0.1) / 0.4; r = 100*(1-p); g=100*(1-p); b=200+55*p; } 
+                else if (val < 0.8) { let p = (val - 0.5) / 0.3; r = 150*p+50; g=50*(1-p); b=255-(100*p); } 
+                else { let p = (val - 0.8) / 0.2; r = 255; g=0; b=155*(1-p); }
                 colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
             }
 
             function resize() {
                 canvas.width = canvas.parentElement.offsetWidth;
                 canvas.height = canvas.parentElement.offsetHeight;
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(0,0,canvas.width, canvas.height);
+                ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width, canvas.height);
             }
             window.addEventListener('resize', resize);
-            resize();
+            resize(); // 初始化标尺
+            updateRuler(document.getElementById('scale-select').value);
 
-            // 动画循环
-            let tick = 0;
             function draw() {
                 requestAnimationFrame(draw);
-                tick++;
+                analyser.getByteFrequencyData(dataArray);
+
                 const w = canvas.width;
                 const h = canvas.height;
-
-                // 1. 整体向左滚动 2 像素 (速度感)
+                
+                // 滚动
                 ctx.drawImage(canvas, 2, 0, w - 2, h, 0, 0, w - 2, h);
 
-                // 2. 绘制右侧新的一列 (2像素宽)
-                for (let x = w - 2; x < w; x++) {
-                    for (let y = 0; y < h; y++) {
-                        
-                        // --- 伪造算法核心区 ---
-                        
-                        // 1. 基础底噪 (Noise Floor)
-                        // Audacity 的背景不是纯白，而是有很多细碎的蓝色噪点
-                        let signalStrength = Math.random() * 0.15; // 0.0 - 0.15 (浅灰/淡蓝)
+                // 绘制新列
+                for (let y = 0; y < h; y++) {
+                    const percent = 1 - (y / h); 
+                    const freqIndex = Math.floor(percent * (bufferLength - 1));
+                    let rawVal = dataArray[freqIndex];
 
-                        // 2. 根据模式叠加信号
-                        // y 越大是底部 (低频)，y 越小是顶部 (高频)
-                        
-                        if (currentMode === 'fridge') {
-                            // 冰箱：底部低频区有很强的横纹
-                            // 模拟 50Hz/60Hz 的倍频谐波
-                            if (y > h * 0.8) {
-                                // 基础增强
-                                signalStrength += 0.4;
-                                // 增加横纹感 (周期性)
-                                if (y % 10 < 3) signalStrength += 0.4; 
-                            }
-                            // 偶尔来点随机脉冲
-                            if (Math.random() > 0.98) signalStrength += 0.3;
-                        } 
-                        else if (currentMode === 'lamp') {
-                            // 台灯：顶部高频区有尖锐的线 (啸叫)
-                            if (y < h * 0.2) {
-                                signalStrength += 0.3;
-                                // 几条明显的细线
-                                if (Math.abs(y - h*0.1) < 2) signalStrength += 0.6; // 亮红线
-                                if (Math.abs(y - h*0.05) < 2) signalStrength += 0.5;
-                            }
-                        }
-                        else if (currentMode === 'abnormal') {
-                            // 异常：全频段混乱干扰
-                            // 垂直方向的条纹
-                            if (tick % 20 < 5) {
-                                signalStrength += 0.6; // 宽带脉冲
-                            }
-                            // 随机的高亮点
-                            if (Math.random() > 0.9) signalStrength += 0.5;
-                        }
+                    // 增强显示
+                    let visualVal = rawVal * 1.5;
+                    // 如果停止播放，保留一点点白底噪
+                    if (audioPlayer.paused) visualVal = Math.random() * 5;
 
-                        // 3. 颜色映射
-                        if (signalStrength > 1.0) signalStrength = 1.0;
-                        let colorIndex = Math.floor(signalStrength * 255);
-                        
-                        ctx.fillStyle = colorMap[colorIndex];
-                        ctx.fillRect(x, y, 1, 1);
-                    }
+                    if(visualVal > 255) visualVal = 255;
+                    ctx.fillStyle = colorMap[Math.floor(visualVal)];
+                    ctx.fillRect(w - 2, y, 2, 1);
                 }
             }
             draw();
         }
 
-        // --- 逻辑控制 ---
+        // --- 杂项 ---
         function startDisplay() {
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('display-view').style.display = 'flex';
-            initSimulation(); 
             connectMQTT(true);
-            speakText("分析仪启动，等待信号");
         }
-
         function startController() {
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('control-view').style.display = 'block';
             connectMQTT(false);
         }
-
-        function triggerResult(cmd) {
-            currentMode = cmd; // 切换绘图模式
-            
-            let text = "", color = "#333"; 
-            switch(cmd) {
-                case 'fridge': text = "检测到电冰箱"; color = "#009900"; break; 
-                case 'lamp': text = "检测到台灯"; color = "#d4a000"; break;
-                case 'abnormal': text = "异常：震动警告"; color = "#cc0000"; break;
-                case 'reset': text = "无信号"; color = "#999"; break;
-            }
-            const el = document.getElementById('status-result');
-            el.innerText = text; el.style.color = color;
-            speakText(text);
-        }
-
-        function handleSecretClick(cmd) { 
-            if(navigator.vibrate) navigator.vibrate(50); 
-            triggerResult(cmd); 
-        }
-
         function speakText(text, force = false) {
             if(!force && text === lastText && text === "无信号") return;
             lastText = text;
@@ -261,17 +276,11 @@
             const u = new SpeechSynthesisUtterance(text);
             u.lang = 'zh-CN'; window.speechSynthesis.speak(u);
         }
-
-        // --- MQTT ---
         function connectMQTT(isReceiver) {
             const clientID = "id_" + Math.random().toString(16).substr(2, 8);
             client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
             client.connect({ onSuccess: () => { if(isReceiver) client.subscribe(myTopic); } });
-            client.onMessageArrived = (msg) => { 
-                if(document.getElementById('display-view').style.display === 'flex') {
-                    triggerResult(msg.payloadString);
-                }
-            };
+            client.onMessageArrived = (msg) => { if(document.getElementById('display-view').style.display === 'flex') playMode(msg.payloadString); };
         }
         function sendMqttCommand(cmd) {
             if(client && client.isConnected()) {

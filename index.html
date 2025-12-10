@@ -3,39 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V23 (WAV Player)</title>
+    <title>Spectrogram V24 (Final Stable)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
         /* 顶部参数栏 */
         #app-header {
-            position: absolute; top: 0; left: 0; width: 100%; height: 70px;
+            position: absolute; top: 0; left: 0; width: 100%; height: 75px;
             background: #e8e8e8; border-bottom: 1px solid #bbb;
             z-index: 20; display: flex; flex-direction: column; justify-content: center; padding-left: 15px;
         }
-        .app-title { font-size: 14px; font-weight: bold; color: #333; }
         
+        /* 连接状态指示器 */
+        #conn-status {
+            position: absolute; top: 10px; right: 10px; font-size: 12px; font-weight: bold;
+            padding: 4px 8px; border-radius: 4px; background: #999; color: #fff;
+        }
+
         /* 倍率控制器 */
         #scale-control { display: flex; align-items: center; font-size: 12px; margin-top: 5px; color: #555; }
         select#scale-select { padding: 2px; margin-left: 5px; font-size: 12px; border: 1px solid #999; border-radius: 3px;}
 
         /* 角色选择 */
-        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; overflow-y: auto; }
+        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: start; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; overflow-y: auto; padding-top: 20px; }
         
         .upload-card {
-            background: #f5f5f5; padding: 15px; border-radius: 8px; border: 1px solid #ddd; width: 85%; margin-bottom: 15px; text-align: left;
+            background: #f5f5f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ddd; width: 85%; margin-bottom: 10px; text-align: left;
         }
-        .upload-label { font-weight: bold; display: block; margin-bottom: 5px; color: #444; }
-        .upload-tip { font-size: 10px; color: #888; margin-bottom: 5px; }
-        input[type="file"] { width: 100%; font-size: 12px; }
+        .upload-label { font-weight: bold; display: block; margin-bottom: 3px; color: #444; font-size: 13px;}
+        .upload-tip { font-size: 10px; color: #888; margin-bottom: 3px; }
+        input[type="file"] { width: 100%; font-size: 11px; }
 
-        button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #e1e1e1; color: #333; font-weight: bold; }
-        button.primary { background: #0078d7; color: white; border: none; width: 80%; padding: 15px; }
+        button { padding: 12px 24px; font-size: 16px; margin: 5px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #e1e1e1; color: #333; font-weight: bold; }
+        button.primary { background: #0078d7; color: white; border: none; width: 85%; padding: 15px; margin-top: 10px; margin-bottom: 30px;}
 
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
         #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #fff; border-top: 1px solid #999; }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+        /* 隐形按钮层 */
+        #secret-layer { position: absolute; top: 75px; left: 0; width: 100%; height: calc(100% - 75px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .secret-zone { /* border: 1px solid red; 调试时打开 */ }
 
         /* 标尺 */
         .ruler-label { position: absolute; left: 5px; font-size: 10px; color: #000; background: rgba(255,255,255,0.7); padding: 1px 3px; border-radius: 2px; font-family: monospace; z-index: 10; pointer-events: none;}
@@ -49,111 +58,116 @@
 </head>
 <body>
 
-    <!-- 音频播放器核心 -->
+    <!-- 音频播放器 -->
     <audio id="audio-player" loop crossOrigin="anonymous"></audio>
 
-    <!-- 顶部参数 -->
+    <!-- 顶部 -->
     <div id="app-header">
-        <div class="app-title">Spectrogram V23 (WAV Support)</div>
+        <div style="font-size: 14px; font-weight: bold;">Spectrogram V24</div>
+        <div id="conn-status">⚪ 连接中...</div>
         <div id="scale-control">
-            标尺显示倍率: 
+            倍率: 
             <select id="scale-select" onchange="updateRuler(this.value)">
-                <option value="1">1x (真实 22kHz)</option>
-                <option value="2">2x (仿真 44kHz)</option>
-                <option value="4" selected>4x (仿真 88kHz)</option>
-                <option value="8">8x (仿真 176kHz)</option>
+                <option value="1">1x</option>
+                <option value="2">2x</option>
+                <option value="4" selected>4x (推荐)</option>
+                <option value="8">8x</option>
             </select>
+            <span style="margin-left:10px; font-size:10px;">配合 Audacity 降速文件使用</span>
         </div>
-        <div style="font-size:10px; color:#888; margin-top:2px;">*若在Audacity降速4倍，请选 4x 以还原视觉</div>
     </div>
 
-    <!-- 角色选择/文件上传 -->
+    <!-- 角色选择 -->
     <div id="role-select">
-        <h2 style="color:#333">V23 高保真 WAV 版</h2>
+        <h3 style="color:#333; margin: 10px 0;">音频素材加载</h3>
         
-        <div class="upload-card">
-            <span class="upload-label">1. 冰箱 WAV (低频)</span>
-            <div class="upload-tip">建议 Audacity 降速处理以保留超声波细节</div>
+        <!-- 新增：待机底噪 -->
+        <div class="upload-card" style="border-left: 4px solid #999;">
+            <span class="upload-label">0. 待机底噪 (默认循环)</span>
+            <div class="upload-tip">用于"无设备"状态，建议录制一段空气底噪</div>
+            <input type="file" id="file-idle" accept=".wav, .mp3">
+        </div>
+
+        <div class="upload-card" style="border-left: 4px solid #009900;">
+            <span class="upload-label">1. 冰箱 (低频)</span>
             <input type="file" id="file-fridge" accept=".wav, .mp3">
         </div>
 
-        <div class="upload-card">
-            <span class="upload-label">2. 台灯 WAV (高频)</span>
+        <div class="upload-card" style="border-left: 4px solid #d4a000;">
+            <span class="upload-label">2. 台灯 (高频)</span>
             <input type="file" id="file-lamp" accept=".wav, .mp3">
         </div>
 
-        <div class="upload-card">
-            <span class="upload-label">3. 异常 WAV (干扰)</span>
+        <div class="upload-card" style="border-left: 4px solid #cc0000;">
+            <span class="upload-label">3. 异常 (噪音)</span>
             <input type="file" id="file-abnormal" accept=".wav, .mp3">
         </div>
         
         <button class="primary" onclick="startDisplay()">启动展示端</button>
-        <button onclick="startController()" style="margin-top:20px; font-size: 14px;">启动控制端 (遥控)</button>
+        <button onclick="startController()" style="font-size: 14px; width: 85%;">我是控制端 (遥控)</button>
+        <div style="font-size: 11px; color:#888; margin-top:10px;">如果连接失败，请直接点击展示端屏幕四角</div>
     </div>
 
-    <!-- 展示界面 -->
+    <!-- 展示端 -->
     <div id="display-view">
-        <button onclick="initAudioContext()" style="position:absolute; top:70px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">解锁</button>
+        <button onclick="initAudioContext()" style="position:absolute; top:80px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">解锁</button>
+
+        <!-- 隐形点击层 -->
+        <div id="secret-layer">
+            <div class="secret-zone" onclick="playMode('fridge')"></div> <!-- 左上 -->
+            <div class="secret-zone" onclick="playMode('lamp')"></div>   <!-- 右上 -->
+            <div class="secret-zone" onclick="playMode('abnormal')"></div> <!-- 左下 -->
+            <div class="secret-zone" onclick="playMode('reset')"></div>    <!-- 右下 -->
+        </div>
 
         <div id="canvas-container">
-            <!-- 标尺 (动态更新) -->
             <div id="ruler-top" class="ruler-label" style="top: 5px;">88 kHz</div>
-            <div id="ruler-mid1" class="ruler-label" style="top: 25%;">66 kHz</div>
-            <div id="ruler-mid2" class="ruler-label" style="top: 50%;">44 kHz</div>
-            <div id="ruler-mid3" class="ruler-label" style="top: 75%;">22 kHz</div>
+            <div id="ruler-mid" class="ruler-label" style="top: 50%;">44 kHz</div>
             <div class="ruler-label" style="bottom: 5px;">0 Hz</div>
             <canvas id="visualizer"></canvas>
         </div>
         
         <div id="text-container">
-            <div style="color:#666; font-size: 10px;">STATUS</div>
-            <div id="status-result">NO SIGNAL</div>
+            <div style="color:#666; font-size: 10px;">ANALYSIS STATUS</div>
+            <div id="status-result">STANDBY</div>
         </div>
     </div>
 
-    <!-- 控制界面 -->
+    <!-- 控制端 -->
     <div id="control-view">
-        <h3 style="color:#666">播放控制</h3>
-        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">■ 停止播放</button>
-        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">▶ 播放：电冰箱</button>
-        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">▶ 播放：台灯</button>
-        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">▶ 播放：异常</button>
+        <h3 style="color:#666">遥控面板</h3>
+        <p style="font-size:12px; color:red" id="ctrl-conn-status">正在连接服务器...</p>
+        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">待机 / 复位</button>
+        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">播放：电冰箱</button>
+        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">播放：台灯</button>
+        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">播放：异常</button>
     </div>
 
     <script>
-        const myTopic = "demo/class/v23_wav_playback"; 
+        // 使用一个随机的 Topic 防止冲突
+        const myTopic = "demo/class/v24_final_"; 
+        // 尝试使用 SSL 端口
         const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
+        
         let client;
+        let isConnected = false;
         let lastText = "";
         
-        // 音频系统
         let audioCtx, analyser, sourceNode;
         const audioPlayer = document.getElementById('audio-player');
-        let currentScale = 4; // 默认4倍倍率
+        let currentScale = 4;
 
         // 文件存储
-        const fileURLs = { fridge: null, lamp: null, abnormal: null };
+        const fileURLs = { idle: null, fridge: null, lamp: null, abnormal: null };
 
-        // 监听文件上传
-        ['fridge', 'lamp', 'abnormal'].forEach(key => {
+        // 绑定上传事件
+        ['idle', 'fridge', 'lamp', 'abnormal'].forEach(key => {
             document.getElementById(`file-${key}`).addEventListener('change', function(e){
                 if(e.target.files[0]) fileURLs[key] = URL.createObjectURL(e.target.files[0]);
             });
         });
 
-        // --- 1. 标尺更新逻辑 ---
-        function updateRuler(val) {
-            currentScale = parseInt(val);
-            const base = 22000; // 假设基准是 22kHz (44.1k/2)
-            const max = base * currentScale;
-            
-            document.getElementById('ruler-top').innerText = (max / 1000).toFixed(0) + " kHz";
-            document.getElementById('ruler-mid1').innerText = (max * 0.75 / 1000).toFixed(0) + " kHz";
-            document.getElementById('ruler-mid2').innerText = (max * 0.5 / 1000).toFixed(0) + " kHz";
-            document.getElementById('ruler-mid3').innerText = (max * 0.25 / 1000).toFixed(0) + " kHz";
-        }
-
-        // --- 2. 播放逻辑 ---
+        // --- 1. 核心播放逻辑 ---
         function playMode(mode) {
             initAudioContext(); 
 
@@ -164,42 +178,75 @@
                 case 'fridge': text = "检测到电冰箱"; color = "#009900"; fileToPlay = fileURLs.fridge; break; 
                 case 'lamp': text = "检测到台灯"; color = "#d4a000"; fileToPlay = fileURLs.lamp; break;
                 case 'abnormal': text = "异常：震动警告"; color = "#cc0000"; fileToPlay = fileURLs.abnormal; break;
-                case 'reset': text = "无信号"; color = "#999"; break;
+                case 'reset': 
+                    text = "正在检测..."; color = "#999"; 
+                    // 关键：复位时，播放 idle 音频
+                    fileToPlay = fileURLs.idle; 
+                    break;
             }
 
-            document.getElementById('status-result').innerText = text;
-            document.getElementById('status-result').style.color = color;
-            speakText(text);
+            // 更新文字
+            const el = document.getElementById('status-result');
+            el.innerText = text; el.style.color = color;
+            
+            // 语音播报 (待机状态不播报，太吵)
+            if(mode !== 'reset') speakText(text);
 
-            if (mode === 'reset') {
-                audioPlayer.pause();
-                audioPlayer.currentTime = 0;
-            } else {
-                if (fileToPlay) {
+            // 播放处理
+            if (fileToPlay) {
+                // 如果是切歌，重置播放
+                if (audioPlayer.src !== fileToPlay) {
                     audioPlayer.src = fileToPlay;
-                    audioPlayer.play().catch(e => console.log("需交互解锁音频", e));
+                    audioPlayer.play().catch(e => console.log("等待交互", e));
+                } else if (audioPlayer.paused) {
+                    audioPlayer.play();
+                }
+            } else {
+                // 如果没传对应的文件
+                if (mode === 'reset') {
+                    // 如果没传底噪文件，就静音
+                    audioPlayer.pause();
                 } else {
-                    alert("请先上传对应的 WAV 文件！");
+                    alert("请先上传对应的录音文件！");
                 }
             }
         }
 
-        // --- 3. 音频可视化 (Audacity 风格) ---
+        // --- 2. 连接状态更新 ---
+        function updateConnStatus(status) {
+            isConnected = status;
+            const ui = document.getElementById('conn-status');
+            const ctrlUi = document.getElementById('ctrl-conn-status');
+            
+            if (status) {
+                ui.innerHTML = "🟢 已连接"; ui.style.background = "#28a745";
+                if(ctrlUi) { ctrlUi.innerText = "服务器已连接 (Topic: " + myTopic + ")"; ctrlUi.style.color = "green"; }
+            } else {
+                ui.innerHTML = "🔴 未连接 (使用触屏)"; ui.style.background = "#dc3545";
+                if(ctrlUi) { ctrlUi.innerText = "连接断开，请重试"; ctrlUi.style.color = "red"; }
+            }
+        }
+
+        // --- 3. 可视化 & 标尺 ---
+        function updateRuler(val) {
+            currentScale = parseInt(val);
+            const base = 22000; 
+            const max = base * currentScale;
+            document.getElementById('ruler-top').innerText = (max / 1000).toFixed(0) + " kHz";
+            document.getElementById('ruler-mid').innerText = (max * 0.5 / 1000).toFixed(0) + " kHz";
+        }
+
         function initAudioContext() {
             if(!audioCtx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 audioCtx = new AudioContext();
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 2048; 
-                
                 sourceNode = audioCtx.createMediaElementSource(audioPlayer);
                 sourceNode.connect(analyser);
                 sourceNode.connect(audioCtx.destination); 
-                
                 startVisualizer();
-            } else if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            } else if (audioCtx.state === 'suspended') { audioCtx.resume(); }
         }
 
         function startVisualizer() {
@@ -207,8 +254,8 @@
             const ctx = canvas.getContext('2d', { alpha: false });
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
-
-            // Audacity 配色 (白->蓝->红)
+            
+            // Audacity 风格调色板
             const colorMap = [];
             for (let i = 0; i < 256; i++) {
                 let r, g, b;
@@ -226,29 +273,25 @@
                 ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width, canvas.height);
             }
             window.addEventListener('resize', resize);
-            resize(); // 初始化标尺
+            resize();
             updateRuler(document.getElementById('scale-select').value);
 
             function draw() {
                 requestAnimationFrame(draw);
                 analyser.getByteFrequencyData(dataArray);
-
                 const w = canvas.width;
                 const h = canvas.height;
                 
-                // 滚动
                 ctx.drawImage(canvas, 2, 0, w - 2, h, 0, 0, w - 2, h);
 
-                // 绘制新列
                 for (let y = 0; y < h; y++) {
                     const percent = 1 - (y / h); 
                     const freqIndex = Math.floor(percent * (bufferLength - 1));
                     let rawVal = dataArray[freqIndex];
-
-                    // 增强显示
                     let visualVal = rawVal * 1.5;
-                    // 如果停止播放，保留一点点白底噪
-                    if (audioPlayer.paused) visualVal = Math.random() * 5;
+                    
+                    // 即使静音也给一点点极小的随机底噪，避免完全死白
+                    if (audioPlayer.paused) visualVal = Math.random() * 3;
 
                     if(visualVal > 255) visualVal = 255;
                     ctx.fillStyle = colorMap[Math.floor(visualVal)];
@@ -258,35 +301,62 @@
             draw();
         }
 
-        // --- 杂项 ---
+        // --- 4. 启动与MQTT ---
         function startDisplay() {
+            if(!fileURLs.fridge && !fileURLs.idle) {
+                if(!confirm("还没上传音频？建议上传'待机底噪'和'冰箱录音'以获得最佳效果。")) return;
+            }
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('display-view').style.display = 'flex';
+            // 自动进入 Reset 模式 (播放底噪)
+            setTimeout(() => playMode('reset'), 500);
             connectMQTT(true);
         }
+
         function startController() {
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('control-view').style.display = 'block';
             connectMQTT(false);
         }
-        function speakText(text, force = false) {
-            if(!force && text === lastText && text === "无信号") return;
-            lastText = text;
+
+        function speakText(text) {
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
             u.lang = 'zh-CN'; window.speechSynthesis.speak(u);
         }
+
+        function handleSecretClick(cmd) { if(navigator.vibrate) navigator.vibrate(50); playMode(cmd); }
+
         function connectMQTT(isReceiver) {
-            const clientID = "id_" + Math.random().toString(16).substr(2, 8);
+            updateConnStatus(false);
+            const clientID = "client_" + Math.random().toString(16).substr(2, 8);
             client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
-            client.connect({ onSuccess: () => { if(isReceiver) client.subscribe(myTopic); } });
-            client.onMessageArrived = (msg) => { if(document.getElementById('display-view').style.display === 'flex') playMode(msg.payloadString); };
+            
+            client.connect({
+                useSSL: true,
+                onSuccess: () => { 
+                    updateConnStatus(true);
+                    if(isReceiver) client.subscribe(myTopic); 
+                },
+                onFailure: (e) => { console.log(e); updateConnStatus(false); }
+            });
+            
+            client.onConnectionLost = (resp) => {
+                if (resp.errorCode !== 0) { console.log("断连", resp); updateConnStatus(false); }
+            };
+
+            client.onMessageArrived = (msg) => { 
+                if(document.getElementById('display-view').style.display === 'flex') playMode(msg.payloadString); 
+            };
         }
+
         function sendMqttCommand(cmd) {
             if(client && client.isConnected()) {
                 const message = new Paho.MQTT.Message(cmd);
                 message.destinationName = myTopic;
                 client.send(message);
+            } else {
+                alert("控制端未连接，请检查网络！");
             }
         }
     </script>

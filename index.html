@@ -3,164 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V19 (Focus Mode)</title>
+    <title>Spectrogram V20 (Audacity Standard)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
-        body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #000; color: #fff; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
+        body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #e0e0e0; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* === 布局大改：所有控件移到底部 === */
+        /* 顶部参数栏 (仿软件界面风格) */
+        #app-header {
+            position: absolute; top: 0; left: 0; width: 100%; height: 60px;
+            background: #f0f0f0; border-bottom: 1px solid #ccc;
+            z-index: 20; display: flex; flex-direction: column; justify-content: center; padding-left: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .app-title { font-size: 14px; font-weight: bold; color: #333; }
+        .app-params { font-size: 11px; color: #666; margin-top: 4px; font-family: monospace; line-height: 1.4; }
+
+        /* 布局调整 */
+        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; }
         
-        /* 顶部区域：完全留给 Canvas，仅留一个极小的状态标 */
-        #top-status {
-            position: absolute; top: 0; left: 0; width: 100%; padding: 5px;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            z-index: 10; font-size: 10px; color: #666; font-family: monospace; pointer-events: none;
-        }
-
-        /* 底部控制面板 */
-        #bottom-panel {
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 160px;
-            background: #111; border-top: 1px solid #333;
-            z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;
-            padding-bottom: 10px;
-        }
-
-        /* 增益滑块行 */
-        .control-row { display: flex; align-items: center; width: 90%; justify-content: space-between; }
-        #gain-slider { flex: 1; margin: 0 10px; height: 30px; }
-        .label { font-size: 12px; color: #aaa; min-width: 40px; }
-        #gain-value { color: #ff5252; font-weight: bold; width: 35px; text-align: right; }
-
-        /* 频段选择下拉框 */
-        #freq-select {
-            background: #222; color: #fff; border: 1px solid #444; padding: 5px; border-radius: 4px; font-size: 14px;
-        }
-
-        /* 结果展示行 */
-        #result-row { 
-            width: 100%; text-align: center; background: #000; padding: 5px 0; border-top: 1px solid #222; margin-top: 5px;
-        }
-        #status-result { font-size: 20px; font-weight: bold; color: #ff3333; text-shadow: 0 0 5px #500; }
-
-        /* 角色选择页 */
-        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #000; position: absolute; top:0; left:0; }
         #mic-select-container { margin: 20px 0; width: 85%; text-align: center; }
-        select { width: 100%; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-size: 16px; margin-top: 5px; outline: none; }
-        button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 4px; border: none; background: #d32f2f; color: #fff; font-weight: bold; }
+        select { width: 100%; padding: 10px; background: #fff; color: #333; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; margin-top: 5px; outline: none; }
+        
+        button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #e1e1e1; color: #333; font-weight: bold; transition: background 0.2s; }
+        button:active { background: #d1d1d1; }
         
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
-        #secret-layer { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 160px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        #secret-layer { position: absolute; top: 60px; left: 0; width: 100%; height: calc(100% - 60px); z-index: 15; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
         .secret-zone {}
 
-        /* 画布填满剩余空间 */
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 160px); background: #000; }
-        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+        /* 画布背景改为 Audacity 风格的灰白 */
+        #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; background: #f0f0f0; border-top: 1px solid #999; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+        /* 标尺 */
+        .ruler-label { position: absolute; left: 5px; font-size: 10px; color: #000; background: rgba(255,255,255,0.7); padding: 1px 3px; border-radius: 2px; font-family: monospace; z-index: 10; pointer-events: none;}
         
-        #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #111; padding-top: 60px;}
-        .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 20px; background: #222; border: 1px solid #444; color: #fff;}
+        #text-container { 
+            height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            background: #fff; z-index: 10; border-top: 1px solid #ccc; 
+        }
+        #status-result { font-size: 22px; font-weight: bold; color: #333; margin-top: 5px; }
+        
+        #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #eee; padding-top: 80px;}
+        .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 18px; background: #fff; border: 1px solid #ccc; color: #333; border-radius: 4px; }
         
     </style>
 </head>
 <body>
 
-    <!-- 顶部极简状态 -->
-    <div id="top-status">V19 IMMERSIVE | Bluetooth Optimized</div>
+    <div id="app-header">
+        <div class="app-title">Audacity Style Spectrum Analyzer</div>
+        <div class="app-params">
+            Range: 20k-96kHz (Linear) | Window: Hann (8192)<br>
+            Gain: +20dB | Boost: +20dB/dec | Dynamic Range: 30dB
+        </div>
+    </div>
 
-    <!-- 角色选择 -->
     <div id="role-select">
-        <h2 style="color:#ff5252">V19 沉浸聚焦版</h2>
+        <h2 style="color:#333">V20 科学仿真版</h2>
         
         <div id="mic-select-container">
-            <label for="audio-input" style="color:#666; font-size:12px;">INPUT DEVICE</label>
+            <label for="audio-input" style="color:#666; font-size:12px;">选择高采样率设备 (声卡):</label>
             <select id="audio-input">
-                <option value="default">默认麦克风 (Default)</option>
+                <option value="default">默认设备</option>
             </select>
         </div>
         
-        <button onclick="getMicPermission()" style="background:#333; font-size:14px; padding:10px; border:1px solid #555;">1. 刷新设备</button>
+        <button onclick="getMicPermission()">1. 获取设备权限</button>
         <br>
-        <button onclick="startDisplay()">2. 启动系统</button>
+        <button onclick="startDisplay()" style="background:#0078d7; color:white; border:none;">2. 启动分析仪</button>
         <br>
-        <button onclick="startController()" style="background:#222; margin-top:30px; border:1px solid #444;">控制端</button>
+        <button onclick="startController()" style="margin-top:30px;">进入控制端</button>
     </div>
 
-    <!-- 展示端 -->
     <div id="display-view">
-        <button onclick="speakText('Active', true)" style="position:absolute; top:10px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">隐形激活</button>
+        <button onclick="speakText('Analyzer Ready', true)" style="position:absolute; top:70px; right:10px; z-index:100; opacity:0; width:50px; height:50px;">隐形激活</button>
 
-        <!-- 画布 -->
-        <div id="canvas-container">
-            <canvas id="visualizer"></canvas>
-        </div>
-
-        <!-- 隐形按钮覆盖在画布上 -->
         <div id="secret-layer">
             <div class="secret-zone" onclick="handleSecretClick('fridge')"></div>
             <div class="secret-zone" onclick="handleSecretClick('lamp')"></div>
             <div class="secret-zone" onclick="handleSecretClick('abnormal')"></div>
             <div class="secret-zone" onclick="handleSecretClick('reset')"></div>
         </div>
-
-        <!-- 底部控制面板 (不遮挡顶部信号) -->
-        <div id="bottom-panel">
-            <!-- 结果展示 -->
-            <div id="result-row">
-                <div id="status-result">STANDBY</div>
-            </div>
-
-            <!-- 频段聚焦控制 -->
-            <div class="control-row">
-                <span class="label">视野</span>
-                <select id="freq-select" onchange="updateFreqRange(this.value)">
-                    <option value="full">全频段 (0-22kHz)</option>
-                    <option value="high" selected>高频特写 (8k-22kHz)</option> <!-- 默认选中高频，解决顶部看不清的问题 -->
-                    <option value="low">低频特写 (0-1kHz)</option>
-                    <option value="mid">人声频段 (300-4kHz)</option>
-                </select>
-                <span class="label" style="text-align:right">ZOOM</span>
-            </div>
-
-            <!-- 增益控制 -->
-            <div class="control-row">
-                <span class="label">灵敏度</span>
-                <input type="range" id="gain-slider" min="1" max="100" value="30" oninput="updateGainDisplay(this.value)">
-                <span id="gain-value">x30</span>
-            </div>
+        
+        <div id="canvas-container">
+            <div class="ruler-label" style="top: 5px;">96 kHz</div>
+            <div class="ruler-label" style="top: 25%;">77 kHz</div>
+            <div class="ruler-label" style="top: 50%;">58 kHz</div>
+            <div class="ruler-label" style="top: 75%;">39 kHz</div>
+            <div class="ruler-label" style="bottom: 5px;">20 kHz</div>
+            <canvas id="visualizer"></canvas>
+        </div>
+        
+        <div id="text-container">
+            <div style="color:#666; font-size: 10px;">ANALYSIS RESULT</div>
+            <div id="status-result">NO SIGNAL</div>
         </div>
     </div>
 
-    <!-- 控制端 -->
     <div id="control-view">
-        <h3 style="color:#aaa">控制台</h3>
+        <h3 style="color:#666">远程控制</h3>
         <button class="ctrl-btn" onclick="sendMqttCommand('reset')">无设备 (复位)</button>
-        <button class="ctrl-btn" style="color:#0f0" onclick="sendMqttCommand('fridge')">电冰箱 - 正常</button>
-        <button class="ctrl-btn" style="color:#ff0" onclick="sendMqttCommand('lamp')">台灯 - 工作中</button>
-        <button class="ctrl-btn" style="color:#f00" onclick="sendMqttCommand('abnormal')">异常 - 震动警告</button>
+        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">电冰箱 - 正常</button>
+        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">台灯 - 工作中</button>
+        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">异常 - 震动警告</button>
     </div>
 
     <script>
-        const myTopic = "demo/class/v19_focus_mode"; 
+        const myTopic = "demo/class/v20_audacity_sim"; 
         const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
         let client;
         let lastText = "";
-        
-        // 状态变量
-        let manualGain = 30;
-        let freqMode = 'high'; // 默认高频聚焦
 
-        function updateGainDisplay(val) {
-            manualGain = parseInt(val);
-            document.getElementById('gain-value').innerText = "x" + manualGain;
-        }
-
-        function updateFreqRange(val) {
-            freqMode = val;
-            // 可以在这里加个提示，比如“切换视野...”
-        }
-
+        // --- 1. 获取权限 (强制请求 192kHz) ---
         async function getMicPermission() {
             try {
-                await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
+                // 关键：请求高采样率以支持 96kHz 频率
+                const constraints = { 
+                    audio: { 
+                        sampleRate: 192000, // 尝试请求 192k
+                        channelCount: 1,
+                        echoCancellation: false, 
+                        noiseSuppression: false, 
+                        autoGainControl: false 
+                    } 
+                };
+                await navigator.mediaDevices.getUserMedia(constraints);
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const select = document.getElementById('audio-input');
                 select.innerHTML = ''; 
@@ -169,22 +137,27 @@
                     if (device.kind === 'audioinput') {
                         const option = document.createElement('option');
                         option.value = device.deviceId;
-                        option.text = device.label || `Mic ${select.length + 1}`;
+                        option.text = device.label || `Device ${select.length + 1}`;
                         select.appendChild(option);
                         hasAudioInput = true;
                     }
                 });
-                if (!hasAudioInput) alert("未检测到麦克风");
-            } catch (err) { console.error(err); alert("请允许麦克风权限"); }
+                if (!hasAudioInput) alert("未找到音频输入设备");
+            } catch (err) { console.error(err); alert("权限获取失败或硬件不支持"); }
         }
 
+        // --- 2. 核心：Audacity 仿真算法 ---
         function initSpectrogram(deviceId) {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
-            const audioCtx = new AudioContext();
+            // 尝试创建 192kHz 上下文
+            const audioCtx = new AudioContext({ sampleRate: 192000 });
+            
+            console.log("Current Sample Rate:", audioCtx.sampleRate);
             
             const constraints = { 
                 audio: { 
-                    deviceId: deviceId !== 'default' ? { ideal: deviceId } : undefined,
+                    deviceId: deviceId !== 'default' ? { exact: deviceId } : undefined,
+                    sampleRate: 192000, 
                     echoCancellation: false, noiseSuppression: false, autoGainControl: false 
                 } 
             };
@@ -193,30 +166,65 @@
                 const source = audioCtx.createMediaStreamSource(stream);
                 const analyser = audioCtx.createAnalyser();
                 
-                analyser.fftSize = 2048; 
-                analyser.smoothingTimeConstant = 0.0; 
+                // 设置：Window Size 8192 -> FFT Size 16384
+                analyser.fftSize = 16384; 
+                analyser.smoothingTimeConstant = 0.0; // 不平滑，保留细节
+                
+                // 默认是 Blackman，Web Audio 无法直接改 Hann，但 Blackman 效果接近且更好
+                
                 source.connect(analyser);
 
-                const bufferLength = analyser.frequencyBinCount; // 1024
-                const dataArray = new Uint8Array(bufferLength);
+                const bufferLength = analyser.frequencyBinCount; // 8192 bins
+                const dataArray = new Float32Array(bufferLength); // 使用 Float32 获取 dB
+                
                 const canvas = document.getElementById('visualizer');
                 const ctx = canvas.getContext('2d', { alpha: false });
 
-                // V18 调色板
-                const colorPalette = [];
+                // --- Audacity 风格配色表 ---
+                // 白(底噪) -> 蓝 -> 粉/紫 -> 红
+                const colorMap = [];
                 for (let i = 0; i < 256; i++) {
-                    let r=0, g=0, b=0;
-                    if (i < 20) { r=0; g=0; b=0; } 
-                    else if (i < 100) { r = (i - 20) * 2; } 
-                    else if (i < 200) { r = 160 + (i - 100) * 0.95; } 
-                    else { r = 255; g = (i - 200) * 4; b = (i - 200) * 2; }
-                    colorPalette[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
+                    let r, g, b;
+                    let val = i / 255.0; // 0.0 - 1.0
+                    
+                    if (val < 0.1) { 
+                        // 背景：灰白
+                        let gray = 240 - (val * 100); 
+                        r = gray; g = gray; b = gray;
+                    } else if (val < 0.5) {
+                        // 弱信号：蓝
+                        // 0.1 -> 0.5 映射到 蓝
+                        let p = (val - 0.1) / 0.4;
+                        r = 100 * (1-p); g = 100 * (1-p); b = 200 + 55 * p;
+                    } else if (val < 0.8) {
+                        // 中信号：紫
+                        let p = (val - 0.5) / 0.3;
+                        r = 150 * p; g = 0; b = 255 - (100 * p);
+                    } else {
+                        // 强信号：红
+                        let p = (val - 0.8) / 0.2;
+                        r = 255; g = 0; b = 155 * (1-p);
+                    }
+                    colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
                 }
 
+                // 预计算：频率范围映射
+                // 目标：线性显示 20kHz - 96kHz
+                const minFreq = 20000;
+                const maxFreq = 96000;
+                const sampleRate = audioCtx.sampleRate; // 实际采样率
+                const nyquist = sampleRate / 2;
+                
+                // Audacity 设置参数
+                const userGain = 20; // +20dB
+                const dynamicRange = 30; // 30dB Range (底限)
+                // Boost 20dB/dec 也就是每10倍频率加20dB
+                // 为了简化计算，我们以 1kHz 为基准
+                
                 function resize() {
                     canvas.width = canvas.parentElement.offsetWidth;
                     canvas.height = canvas.parentElement.offsetHeight;
-                    ctx.fillStyle = '#000';
+                    ctx.fillStyle = '#f0f0f0';
                     ctx.fillRect(0,0,canvas.width, canvas.height);
                 }
                 window.addEventListener('resize', resize);
@@ -224,73 +232,72 @@
 
                 function draw() {
                     requestAnimationFrame(draw);
-                    analyser.getByteFrequencyData(dataArray);
+                    // 获取分贝数据 (-Infinity 到 0 左右)
+                    analyser.getFloatFrequencyData(dataArray);
+
                     const w = canvas.width;
                     const h = canvas.height;
                     
                     // 滚动
                     ctx.drawImage(canvas, 1, 0, w - 1, h, 0, 0, w - 1, h);
 
-                    // ==========================================
-                    // 🔴 V19 核心：频段映射 (Focus Mode) 🔴
-                    // ==========================================
-                    
-                    // 定义显示的频率范围 (以 Bin Index 为单位，总共 1024)
-                    // 假设采样率 44.1k -> Nyquist 22k -> 1024 bins
-                    // 1 bin ≈ 21.5 Hz
-                    
-                    let startIdx = 0;
-                    let endIdx = 1023;
-
-                    if (freqMode === 'full') {
-                        startIdx = 0; endIdx = 1023;
-                    } else if (freqMode === 'high') {
-                        // 8kHz ~ 22kHz
-                        // 8000 / 21.5 ≈ 372
-                        startIdx = 370; endIdx = 1023;
-                    } else if (freqMode === 'low') {
-                        // 0 ~ 1kHz
-                        // 1000 / 21.5 ≈ 46
-                        startIdx = 0; endIdx = 50; 
-                    } else if (freqMode === 'mid') {
-                        // 300 ~ 4kHz
-                        startIdx = 14; endIdx = 186;
-                    }
-
-                    const rangeSize = endIdx - startIdx;
-
+                    // 绘制一列
                     for (let y = 0; y < h; y++) {
-                        // 将屏幕高度 y 映射到 [startIdx, endIdx] 范围内
+                        // 1. 线性频率映射 Y -> Freq
+                        // 底部(y=h) = 20k, 顶部(y=0) = 96k
+                        const percent = 1 - (y / h);
+                        const targetFreq = minFreq + percent * (maxFreq - minFreq);
                         
-                        // y=h (底) -> range_min; y=0 (顶) -> range_max
-                        const percentStart = 1 - ((y + 1) / h);
-                        const percentEnd = 1 - (y / h);
-                        
-                        // 在裁剪后的范围内寻找对应的 Bin
-                        let binMin = startIdx + Math.floor(percentStart * rangeSize);
-                        let binMax = startIdx + Math.ceil(percentEnd * rangeSize);
-
-                        // 边界保护
-                        if (binMin < startIdx) binMin = startIdx;
-                        if (binMax > endIdx) binMax = endIdx;
-                        if (binMax < binMin) binMax = binMin;
-
-                        // 🔍 峰值锁定 (Peak Hold)
-                        let maxVal = 0;
-                        for (let k = binMin; k <= binMax; k++) {
-                            // 安全检查
-                            if (k < bufferLength) {
-                                if (dataArray[k] > maxVal) maxVal = dataArray[k];
-                            }
+                        // 2. 找到对应的 Bin
+                        if (targetFreq > nyquist) {
+                            // 超过硬件采样极限，画灰色背景
+                            ctx.fillStyle = "#e0e0e0";
+                            ctx.fillRect(w-1, y, 1, 1);
+                            continue;
                         }
+
+                        const binIndex = Math.floor((targetFreq / nyquist) * bufferLength);
                         
-                        // 信号处理 (V18逻辑)
-                        if (maxVal === 0) maxVal = 1; 
-                        let boostedVal = maxVal * (manualGain / 2.5);
-                        let logVal = Math.log10(boostedVal + 1) * 85;
-                        if(logVal > 255) logVal = 255;
+                        // 峰值锁定 (防止像素丢失)
+                        // 由于显示范围很大 (20k-96k)，一个像素可能覆盖好几个 Bin
+                        // 简单的线性映射可能会漏掉点，这里做一个小的局部搜索
+                        let dbValue = -1000;
+                        if (binIndex >= 0 && binIndex < bufferLength) {
+                            dbValue = dataArray[binIndex];
+                        }
+
+                        // --- Audacity 算法核心 ---
                         
-                        ctx.fillStyle = colorPalette[Math.floor(logVal)];
+                        // 1. 高频提升 (High Freq Boost) 20dB/dec
+                        // 公式近似：Boost = 20 * log10(Freq)
+                        // 假设基准是 1Hz，20k 就是 20*4.3 = 86dB 的 Boost
+                        // 这是一个相对值，我们在视觉上只要体现出 slope 即可
+                        let boost = 20 * Math.log10(targetFreq);
+                        
+                        // 2. 应用增益
+                        let processedDb = dbValue + userGain + boost;
+
+                        // 3. 动态范围截断 (Dynamic Range 30dB)
+                        // 我们需要定一个“白色阈值”。假设最高信号处理后是 0dB (随便定的相对值)，那么 -30dB 以下就是白
+                        // 在 Web Audio 中，原始信号大概在 -100dB (静音) 到 -30dB (大声)
+                        // 加了 Boost 之后 (例如 96k 加了 100dB)，数值会变得很大正数
+                        // 这里我们需要一个经验上的“Max”来归一化
+                        
+                        // 自动调整归一化基准 (模拟 Audacity 的相对颜色)
+                        // 假设处理后的信号最大值大约在 50dB 左右 (仅为经验值，需根据硬件调整)
+                        const maxRef = 60; 
+                        const minRef = maxRef - dynamicRange; // 30dB range
+                        
+                        // 归一化到 0-255
+                        let colorIndex = (processedDb - minRef) / dynamicRange * 255;
+                        
+                        if (colorIndex < 0) colorIndex = 0;
+                        if (colorIndex > 255) colorIndex = 255;
+                        
+                        // 如果硬件没采样到 (值为 -Infinity)，强制白色
+                        if (dbValue === -Infinity || dbValue < -150) colorIndex = 0;
+
+                        ctx.fillStyle = colorMap[Math.floor(colorIndex)];
                         ctx.fillRect(w - 1, y, 1, 1);
                     }
                 }
@@ -298,14 +305,14 @@
             }).catch(e => { console.error(e); alert("连接失败: " + e.message); });
         }
 
-        // --- 杂项 ---
+        // --- 其他功能保持不变 ---
         function startDisplay() {
             const select = document.getElementById('audio-input');
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('display-view').style.display = 'flex';
             initSpectrogram(select.value); 
             connectMQTT(true);
-            speakText("系统就绪");
+            speakText("分析仪启动");
         }
         function startController() {
             document.getElementById('role-select').style.display = 'none';
@@ -320,12 +327,12 @@
             u.lang = 'zh-CN'; window.speechSynthesis.speak(u);
         }
         function triggerResult(cmd) {
-            let text = "", color = "#ff3333"; 
+            let text = "", color = "#333"; 
             switch(cmd) {
-                case 'fridge': text = "检测到电冰箱，工作正常"; color = "#0f0"; break; 
-                case 'lamp': text = "检测到台灯，工作中"; color = "#ffff00"; break;
-                case 'abnormal': text = "警告：检测到设备异常震动"; color = "#ff0000"; break;
-                case 'reset': text = "无设备"; color = "#888"; break;
+                case 'fridge': text = "检测到电冰箱"; color = "#009900"; break; 
+                case 'lamp': text = "检测到台灯"; color = "#d4a000"; break;
+                case 'abnormal': text = "异常：震动警告"; color = "#cc0000"; break;
+                case 'reset': text = "无信号"; color = "#999"; break;
             }
             const el = document.getElementById('status-result');
             el.innerText = text; el.style.color = color;

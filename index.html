@@ -3,6 +3,438 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spectrogram V35 (Remote Gain)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
+        
+        /* --- 启动页 --- */
+        #setup-view { 
+            display: flex; flex-direction: column; align-items: center; justify-content: start; 
+            height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; 
+            overflow-y: auto; padding: 15px 0;
+        }
+        .section-card { width: 85%; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .setting-row { display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; }
+        .setting-label { width: 80px; font-weight: bold; color: #444; }
+        input[type="range"] { flex: 1; height: 5px; cursor: pointer; }
+        .setting-val { width: 30px; text-align: right; color: #0078d7; font-family: monospace; }
+        select.device-picker { width: 100%; padding: 8px; margin-bottom: 8px; }
+        .file-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 11px;}
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; display: inline-block; margin-left: 5px; }
+        .status-dot.loaded { background: #009900; }
+        #conn-bar { width: 90%; padding: 8px; margin-bottom: 10px; border-radius: 4px; text-align: center; font-size: 12px; font-weight: bold; color: #fff; background: #999; display: flex; justify-content: space-between; align-items: center;}
+        #server-switch { background: rgba(0,0,0,0.2); border: none; color: #fff; font-size: 10px; padding: 2px 5px; cursor: pointer; border-radius: 3px; }
+        button.primary { background: #0078d7; color: white; border: none; width: 90%; padding: 14px; border-radius: 6px; font-weight: bold; font-size: 16px; margin-bottom: 10px;}
+        button.ctrl { background: #eee; color: #333; border: 1px solid #ccc; width: 90%; padding: 12px; border-radius: 6px; font-weight: bold;}
+
+        /* --- 展示页 --- */
+        #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
+        #canvas-wrapper { flex: 1; position: relative; background: #fff; width: 100%; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+        #y-axis { position: absolute; top: 10px; left: 5px; pointer-events: none; display: flex; flex-direction: column; gap: 20px; }
+        .ruler-tag { background: rgba(255,255,255,0.7); padding: 1px 3px; font-size: 10px; color: #333; font-family: monospace; border-radius: 2px; }
+        #text-container { height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #e0e0e0; border-top: 1px solid #ccc; z-index: 10; }
+        #status-result { font-size: 28px; font-weight: bold; color: #333; }
+        #status-sub { font-size: 12px; color: #666; }
+        /* 隐藏面板 */
+        #hidden-settings { display: none; position: absolute; top: 0; left: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; border-bottom: 1px solid #ccc; z-index: 100; box-sizing: border-box;}
+        #settings-trigger { position: absolute; top: 0; right: 0; width: 40px; height: 40px; z-index: 90; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #999; opacity: 0.5; background: rgba(255,255,255,0.5); border-bottom-left-radius: 10px;}
+
+        /* --- 控制端 --- */
+        #control-view { display: none; padding: 15px; text-align: center; height: 100%; background: #eee; overflow-y: auto; }
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .device-btn { padding: 15px; background: #fff; border: 1px solid #ccc; border-radius: 6px; font-weight: bold; color: #333; }
+        .device-btn:active { background: #ddd; }
+        .state-toggle { display: flex; margin-bottom: 15px; background: #fff; border-radius: 6px; border: 1px solid #ccc; overflow: hidden; }
+        .state-opt { flex: 1; padding: 12px; font-weight: bold; font-size: 14px; text-align: center;}
+        .state-opt.active { background: #d32f2f; color: white; }
+        .state-opt.normal.active { background: #009900; }
+        /* 远程调节 */
+        .remote-adjust { display: flex; justify-content: space-between; margin-bottom: 15px; background: #ddd; padding: 5px; border-radius: 6px;}
+        .adj-btn { flex: 1; border: none; background: #bbb; margin: 0 2px; border-radius: 4px; padding: 8px; font-weight: bold; color: #333;}
+        .adj-btn:active { background: #999; }
+
+    </style>
+</head>
+<body>
+
+    <audio id="audio-player" loop crossOrigin="anonymous"></audio>
+
+    <!-- 1. 设置页 -->
+    <div id="setup-view">
+        <h3 style="margin: 0 0 10px 0;">终端 V35 配置</h3>
+        <div id="conn-bar">
+            <span id="conn-text">⚪ 连接中...</span>
+            <button id="server-switch" onclick="switchServer()">切换线路</button>
+        </div>
+
+        <!-- 音频参数 (默认值已修正) -->
+        <div class="section-card">
+            <div style="font-size:12px; color:#999; margin-bottom:5px;">显示参数</div>
+            <div class="setting-row">
+                <span class="setting-label">显示增益:</span>
+                <!-- 默认值改为 70 (更亮) -->
+                <input type="range" id="p-gain" min="0" max="150" value="70" oninput="syncParams()">
+                <span id="v-gain" class="setting-val">70</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">底噪过滤:</span>
+                <!-- 默认值改为 10 (几乎不过滤，保证有画面) -->
+                <input type="range" id="p-cut" min="0" max="100" value="10" oninput="syncParams()">
+                <span id="v-cut" class="setting-val">10</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">高频补偿:</span>
+                <input type="range" id="p-boost" min="0" max="60" value="25" oninput="syncParams()">
+                <span id="v-boost" class="setting-val">25</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">文件音量:</span>
+                <input type="range" id="p-file-vol" min="0" max="200" value="100" oninput="syncParams()">
+                <span id="v-file-vol" class="setting-val">100</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">麦克音量:</span>
+                <input type="range" id="p-mic-vol" min="0" max="200" value="100" oninput="syncParams()">
+                <span id="v-mic-vol" class="setting-val">100</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">标尺倍率:</span>
+                <input type="range" id="p-scale" min="1" max="8" value="4" oninput="syncParams()">
+                <span id="v-scale" class="setting-val">4x</span>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <select id="device-picker" class="device-picker" onchange="updateUploadUI()"></select>
+            <div class="file-row">
+                <span>正常 (Normal):</span>
+                <input type="file" id="file-input-normal" accept=".wav, .mp3">
+                <span id="dot-normal" class="status-dot"></span>
+            </div>
+            <div class="file-row">
+                <span>异常 (Abnormal):</span>
+                <input type="file" id="file-input-abnormal" accept=".wav, .mp3">
+                <span id="dot-abnormal" class="status-dot"></span>
+            </div>
+        </div>
+
+        <div style="width:85%; display:flex; align-items:center; margin-bottom:15px;">
+            <input type="checkbox" id="use-mic" checked>
+            <label for="use-mic" style="font-size:14px; margin-left:8px;">启用环境麦克风</label>
+        </div>
+
+        <button class="primary" onclick="startDisplay()">启动展示端</button>
+        <button class="ctrl" onclick="startController()">我是控制端 (遥控)</button>
+    </div>
+
+    <!-- 2. 展示端 -->
+    <div id="display-view">
+        <!-- 隐藏面板 -->
+        <div id="hidden-settings">
+            <div style="text-align:center; font-size:12px; color:#999; margin-bottom:10px;">实时微调</div>
+            <div id="settings-clone-target"></div>
+        </div>
+        <!-- 齿轮图标触发器 -->
+        <div id="settings-trigger" onclick="toggleHiddenSettings()">⚙</div>
+
+        <div id="canvas-wrapper">
+            <div id="y-axis">
+                <span class="ruler-tag" id="lbl-max">88k</span>
+                <span class="ruler-tag" id="lbl-mid">44k</span>
+                <span class="ruler-tag">0Hz</span>
+            </div>
+            <canvas id="visualizer"></canvas>
+        </div>
+        
+        <div id="text-container">
+            <div id="status-result">NO DEVICE</div>
+            <div id="status-sub">System Standby</div>
+        </div>
+    </div>
+
+    <!-- 3. 控制端 -->
+    <div id="control-view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <button onclick="exitController()" style="padding:5px 10px; font-size:12px;">⬅ 返回设置</button>
+            <span id="ctrl-conn-status" style="font-size:12px; color:#666;">...</span>
+        </div>
+        
+        <!-- 远程画面调节 (救场神器) -->
+        <div class="remote-adjust">
+            <span style="font-size:12px; align-self:center; color:#555;">画面太暗?</span>
+            <button class="adj-btn" onclick="sendRemoteAdjust('gain', 10)">亮度 +</button>
+            <button class="adj-btn" onclick="sendRemoteAdjust('cut', -10)">底噪 +</button>
+            <button class="adj-btn" onclick="sendRemoteAdjust('gain', -10)">亮度 -</button>
+        </div>
+
+        <div class="state-toggle">
+            <div id="btn-state-normal" class="state-opt normal active" onclick="setGlobalState('normal')">Normal</div>
+            <div id="btn-state-abnormal" class="state-opt" onclick="setGlobalState('abnormal')">Abnormal</div>
+        </div>
+
+        <button class="device-btn" style="width:100%; margin-bottom:20px; background:#333; color:#fff;" onclick="sendCmd('No Device')">NO DEVICE (Reset)</button>
+
+        <div id="device-grid" class="grid-container"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 🔴 必须修改：固定 Topic 保证两端互通
+        // ==========================================
+        const myTopic = "demo/class/v35_fixed_channel_999"; 
+        
+        const servers = [
+            { host: "broker.emqx.io", port: 8084, name: "EMQX" },
+            { host: "broker.hivemq.com", port: 8884, name: "HiveMQ" }
+        ];
+        let currentServerIdx = 0;
+
+        const deviceList = ["Router", "Projector", "Microwave", "Heater", "Desktop", "AirConditioner", "3DPrinter", "Refridgerator", "Humidifier", "DeskLamp"];
+        const registry = {};
+        deviceList.forEach(d => registry[d] = { normal: null, abnormal: null });
+
+        let client, audioCtx, analyser, fileNode, micNode, fileGain, micGain;
+        const audioPlayer = document.getElementById('audio-player');
+        let currentGlobalState = 'normal';
+        
+        // 默认参数修正：cut=10 (保证有底噪), gain=70 (保证够亮)
+        let p = { scale:4, cut:10, gain:70, boost:25, micVol:100, fileVol:100 };
+
+        window.onload = function() {
+            initUI();
+            connectMQTT(false);
+        };
+
+        function initUI() {
+            const picker = document.getElementById('device-picker');
+            const grid = document.getElementById('device-grid');
+            deviceList.forEach(dev => {
+                let opt = document.createElement('option'); opt.value = dev; opt.innerText = dev; picker.appendChild(opt);
+                let btn = document.createElement('button'); btn.className = "device-btn"; btn.innerText = dev; btn.onclick = () => sendCmd(dev); grid.appendChild(btn);
+            });
+            document.getElementById('file-input-normal').addEventListener('change', (e) => handleUpload(e, 'normal'));
+            document.getElementById('file-input-abnormal').addEventListener('change', (e) => handleUpload(e, 'abnormal'));
+        }
+
+        function handleUpload(e, state) {
+            const dev = document.getElementById('device-picker').value;
+            if(e.target.files[0]) {
+                registry[dev][state] = URL.createObjectURL(e.target.files[0]);
+                updateUploadUI();
+            }
+        }
+        function updateUploadUI() {
+            const dev = document.getElementById('device-picker').value;
+            document.getElementById('dot-normal').className = registry[dev].normal ? "status-dot loaded" : "status-dot";
+            document.getElementById('dot-abnormal').className = registry[dev].abnormal ? "status-dot loaded" : "status-dot";
+        }
+
+        // --- MQTT ---
+        function switchServer() {
+            if(client) try{client.disconnect();}catch(e){}
+            currentServerIdx = (currentServerIdx + 1) % servers.length;
+            connectMQTT(false);
+        }
+        function connectMQTT(isReceiver) {
+            const srv = servers[currentServerIdx];
+            const ui = document.getElementById('conn-text');
+            ui.innerText = `🟡 ${srv.name}...`;
+            ui.parentElement.style.background="#d4a000";
+
+            const cid = "client_" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(srv.host, srv.port, "/mqtt", cid);
+
+            client.connect({
+                useSSL: true, timeout: 5,
+                onSuccess: () => {
+                    ui.innerText = `🟢 已连接 (${srv.name})`;
+                    ui.parentElement.style.background="#28a745";
+                    if(document.getElementById('ctrl-conn-status')) 
+                        document.getElementById('ctrl-conn-status').innerText = "✅ Online: " + srv.name;
+                    if(isReceiver) client.subscribe(myTopic);
+                },
+                onFailure: () => {
+                    ui.innerText = "🔴 失败 (点此切换)";
+                    ui.parentElement.style.background="#dc3545";
+                }
+            });
+            client.onMessageArrived = (msg) => {
+                if(document.getElementById('display-view').style.display === 'flex') {
+                    const data = JSON.parse(msg.payloadString);
+                    if(data.type === 'device') executeCommand(data.val, data.state);
+                    // 远程调节指令处理
+                    if(data.type === 'adjust') {
+                        if(data.param === 'gain') {
+                            p.gain += data.val;
+                            document.getElementById('p-gain').value = p.gain;
+                        } else if(data.param === 'cut') {
+                            p.cut += data.val;
+                            if(p.cut<0) p.cut=0;
+                            document.getElementById('p-cut').value = p.cut;
+                        }
+                        syncParams(); // 应用更改
+                    }
+                }
+            };
+        }
+
+        // --- 远程控制 ---
+        function sendRemoteAdjust(param, val) {
+            if(!client || !client.isConnected()) return;
+            const payload = JSON.stringify({ type:'adjust', param:param, val:val });
+            const msg = new Paho.MQTT.Message(payload);
+            msg.destinationName = myTopic;
+            client.send(msg);
+        }
+
+        // --- 音频 ---
+        async function initAudioEngine() {
+            if(audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.1;
+
+            fileNode = audioCtx.createMediaElementSource(audioPlayer);
+            fileGain = audioCtx.createGain();
+            fileNode.connect(fileGain); fileGain.connect(analyser); fileGain.connect(audioCtx.destination);
+
+            if(document.getElementById('use-mic').checked) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
+                    micNode = audioCtx.createMediaStreamSource(stream);
+                    micGain = audioCtx.createGain();
+                    micNode.connect(micGain); micGain.connect(analyser);
+                } catch(e){}
+            }
+            syncParams(); startVisualizer();
+        }
+
+        function syncParams() {
+            p.micVol = parseInt(document.getElementById('p-mic-vol').value);
+            p.fileVol = parseInt(document.getElementById('p-file-vol').value);
+            p.scale = parseInt(document.getElementById('p-scale').value);
+            p.gain = parseInt(document.getElementById('p-gain').value);
+            p.boost = parseInt(document.getElementById('p-boost').value);
+            p.cut = parseInt(document.getElementById('p-cut').value);
+
+            // 更新所有UI
+            ['mic-vol','file-vol','scale','gain','boost','cut'].forEach(k => {
+                const els = document.querySelectorAll(`#v-${k}, #hidden-settings #v-${k}`);
+                els.forEach(el => el.innerText = p[k] + (k==='scale'?'x':''));
+                const inputs = document.querySelectorAll(`#hidden-settings #p-${k}`);
+                inputs.forEach(inp => inp.value = p[k]);
+            });
+
+            if(micGain) micGain.gain.value = p.micVol/100;
+            if(fileGain) fileGain.gain.value = p.fileVol/100;
+            const base=22; 
+            document.getElementById('lbl-max').innerText=(base*p.scale)+"k";
+            document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
+        }
+
+        function startVisualizer() {
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d', { alpha: false });
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Float32Array(bufferLength);
+            const colorMap = [];
+            for (let i=0; i<256; i++) {
+                let r,g,b; let val=i/255;
+                if(val<0.1){ let k=255-(val*40); r=k;g=k;b=k; }
+                else if(val<0.4){ let k=(val-0.1)/0.3; r=100*(1-k); g=100*(1-k); b=255; }
+                else if(val<0.8){ let k=(val-0.4)/0.4; r=200*k+50; g=50*(1-k); b=255; }
+                else{ let k=(val-0.8)/0.2; r=255; g=0; b=255*(1-k); }
+                colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
+            }
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getFloatFrequencyData(dataArray);
+                const w = canvas.width; const h = canvas.height;
+                ctx.drawImage(canvas, 1, 0, w-1, h, 0, 0, w-1, h);
+                const nyquist = audioCtx.sampleRate/2;
+                for (let y=0; y<h; y++) {
+                    const percent = 1-(y/h);
+                    const targetFreq = percent*nyquist;
+                    const bin = Math.floor((targetFreq/nyquist)*bufferLength);
+                    if(bin>=bufferLength) continue;
+                    let db = dataArray[bin]; if(db===-Infinity) db=-160;
+                    let boost = targetFreq>2000 ? p.boost * Math.log10(targetFreq/2000) : 0;
+                    let norm = (db + p.gain + boost + 100)*2.5 - (p.cut*2.5);
+                    if(norm<0) norm=0; if(norm>255) norm=255;
+                    ctx.fillStyle = colorMap[Math.floor(norm)];
+                    ctx.fillRect(w-1, y, 1, 1);
+                }
+            }
+            canvas.width = canvas.parentElement.offsetWidth;
+            canvas.height = canvas.parentElement.offsetHeight;
+            draw();
+        }
+
+        // --- 控制逻辑 ---
+        function setGlobalState(state) {
+            currentGlobalState = state;
+            document.getElementById('btn-state-normal').className = state==='normal'?"state-opt normal active":"state-opt normal";
+            document.getElementById('btn-state-abnormal').className = state==='abnormal'?"state-opt active":"state-opt";
+        }
+        function sendCmd(device) {
+            if(!client || !client.isConnected()) { alert("未连接"); return; }
+            const payload = JSON.stringify({ type:'device', val:device, state:currentGlobalState });
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = myTopic;
+            client.send(message);
+        }
+        function executeCommand(device, state) {
+            initAudioEngine();
+            audioPlayer.pause();
+            const resEl = document.getElementById('status-result');
+            const subEl = document.getElementById('status-sub');
+            if (device === 'No Device') {
+                resEl.innerText = "NO DEVICE"; resEl.style.color = "#333"; subEl.innerText = "Standby"; return;
+            }
+            resEl.innerText = device;
+            resEl.style.color = state === 'normal' ? "#009900" : "#d32f2f";
+            subEl.innerText = state === 'normal' ? "Normal" : "ABNORMAL!";
+            subEl.style.color = state === 'normal' ? "#555" : "#d32f2f";
+            speakText(device + " " + state);
+            const url = registry[device][state];
+            if(url) { audioPlayer.src = url; setTimeout(() => audioPlayer.play().catch(e=>{}), 100); }
+        }
+        function speakText(text) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'en-US'; window.speechSynthesis.speak(u);
+        }
+        function startDisplay() {
+            const setupCard = document.querySelector('.section-card').innerHTML;
+            document.getElementById('settings-clone-target').innerHTML = setupCard;
+            document.querySelectorAll('#hidden-settings input').forEach(input => input.oninput = syncParams);
+            document.getElementById('setup-view').style.display = 'none';
+            document.getElementById('display-view').style.display = 'flex';
+            initAudioEngine(); connectMQTT(true);
+        }
+        function startController() {
+            document.getElementById('setup-view').style.display = 'none';
+            document.getElementById('control-view').style.display = 'block';
+            connectMQTT(false);
+        }
+        function exitController() {
+            document.getElementById('control-view').style.display = 'none';
+            document.getElementById('setup-view').style.display = 'flex';
+        }
+        function toggleHiddenSettings() {
+            const el = document.getElementById('hidden-settings');
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Spectrogram V37 (Mic Fallback)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>

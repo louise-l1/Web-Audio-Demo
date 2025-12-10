@@ -235,50 +235,70 @@
 
         // --- 音频引擎 (静音播放 + 渐变) ---
         async function initAudioEngine() {
-            if(audioCtx) return;
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            audioCtx = new AudioContext();
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 4096;
-            analyser.smoothingTimeConstant = 0.2; // 稍微平滑，画面更稳
+            // 1. 确保 AudioContext 存在
+            if(!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 4096;
+                analyser.smoothingTimeConstant = 0.2;
 
-            // 1. 文件通道
-            fileNode = audioCtx.createMediaElementSource(audioPlayer);
-            fileGain = audioCtx.createGain();
-            
-            // 连接：File -> Gain -> Analyser
-            // 【关键】不连接到 destination，所以扬声器无声，只有图像
-            fileNode.connect(fileGain);
-            fileGain.connect(analyser); 
+                // --- 文件通道 ---
+                fileNode = audioCtx.createMediaElementSource(audioPlayer);
+                fileGain = audioCtx.createGain();
+                fileNode.connect(fileGain);
+                fileGain.connect(analyser);
+                // 注意：这里不连 destination，实现静音播放
 
-            // 2. 麦克风通道
-            if(document.getElementById('use-mic').checked) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
+                // --- 立即启动视觉 (不要等麦克风) ---
+                syncParams();
+                startVisualizer();
+            }
+
+            // 2. 强制唤醒 (关键修复)
+            // 浏览器策略经常会导致 Context 自动挂起 (Suspended)，导致没信号
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+
+            // 3. 麦克风通道 (异步加载，不阻塞主线程)
+            // 只有当 micNode 还没创建，且用户勾选了麦克风时才加载
+            if(document.getElementById('use-mic').checked && !micNode) {
+                navigator.mediaDevices.getUserMedia({ 
+                    audio: { 
+                        echoCancellation: false, 
+                        noiseSuppression: false, 
+                        autoGainControl: false 
+                    } 
+                }).then(stream => {
                     micNode = audioCtx.createMediaStreamSource(stream);
                     micGain = audioCtx.createGain();
-                    // Mic -> Gain -> Analyser (也不连接 destination，防啸叫)
                     micNode.connect(micGain);
                     micGain.connect(analyser);
-                } catch(e) { console.warn("Mic denied"); }
+                    // 重新同步一下音量
+                    micGain.gain.value = parseInt(document.getElementById('p-mic-vol').value) / 100;
+                    console.log("麦克风已混入");
+                }).catch(e => {
+                    console.warn("无法获取麦克风权限", e);
+                    // 即使失败也不报错，保证文件播放正常
+                });
             }
-            syncParams();
-            startVisualizer();
         }
 
         // --- 核心切换逻辑 (渐进) ---
         function executeCommand(device, state) {
+            // 1. 确保引擎激活
             initAudioEngine();
-            // 不要直接 audioPlayer.pause()，我们要用 Gain 做淡出
-
+            
             const resEl = document.getElementById('status-result');
             const subEl = document.getElementById('status-sub');
             let fileUrl = null;
 
+            // 2. UI 更新
             if (device === 'No Device') {
                 resEl.innerText = "NO DEVICE"; resEl.style.color = "#333";
                 subEl.innerText = "Background Monitoring";
-                fileUrl = registry['idle']; // 播放底噪文件
+                fileUrl = registry['idle'];
             } else {
                 resEl.innerText = device;
                 resEl.style.color = state === 'normal' ? "#009900" : "#d32f2f";
@@ -288,30 +308,30 @@
                 fileUrl = registry[device][state];
             }
 
-            // --- 丝滑切换算法 ---
-            const now = audioCtx.currentTime;
-            const fadeTime = 0.3; // 0.3秒淡出
+            // 3. 渐进切换逻辑
+            if(audioCtx) {
+                const now = audioCtx.currentTime;
+                const fadeTime = 0.3;
 
-            // 1. 淡出当前波形
-            fileGain.gain.cancelScheduledValues(now);
-            fileGain.gain.setValueAtTime(fileGain.gain.value, now);
-            fileGain.gain.linearRampToValueAtTime(0, now + fadeTime);
+                // 淡出
+                fileGain.gain.cancelScheduledValues(now);
+                fileGain.gain.setValueAtTime(fileGain.gain.value, now);
+                fileGain.gain.linearRampToValueAtTime(0, now + fadeTime);
 
-            // 2. 切换源并淡入
-            setTimeout(() => {
-                if (fileUrl) {
-                    // 如果URL变了才重置src，防止重复加载
-                    // 但这里为了确保从头循环，或者简单的逻辑，直接赋也没事
-                    // 检查是否正在播放同一个
-                    // 这里简化逻辑：直接切
-                    audioPlayer.src = fileUrl;
-                    audioPlayer.play().catch(e=>{});
-                    
-                    // 淡入
-                    const targetVol = p.fileVol / 100;
-                    fileGain.gain.linearRampToValueAtTime(targetVol, audioCtx.currentTime + fadeTime);
-                }
-            }, fadeTime * 1000);
+                setTimeout(() => {
+                    if (fileUrl) {
+                        audioPlayer.src = fileUrl;
+                        audioPlayer.play().catch(e=>{ console.log("等待交互") });
+                        
+                        // 淡入
+                        const targetVol = parseInt(document.getElementById('p-file-vol').value) / 100;
+                        fileGain.gain.linearRampToValueAtTime(targetVol, audioCtx.currentTime + fadeTime);
+                    } else {
+                        // 如果没有文件，就暂停播放器，只留麦克风信号
+                        audioPlayer.pause();
+                    }
+                }, fadeTime * 1000);
+            }
         }
 
         // --- 其他辅助 ---

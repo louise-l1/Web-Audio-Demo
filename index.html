@@ -3,93 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V33 (Mixer & Devices)</title>
+    <title>Spectrogram V34 (Clean & Stable)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* 顶部参数栏 (可折叠) */
-        #header-container {
-            position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
-            background: #e8e8e8; border-bottom: 1px solid #999; transition: transform 0.3s ease;
-        }
-        #app-header { padding: 10px 15px; }
-        #header-toggle {
-            position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
-            background: #999; color: #fff; font-size: 12px; padding: 2px 10px;
-            border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; cursor: pointer;
+        /* --- 启动页 / 设置页 --- */
+        #setup-view { 
+            display: flex; flex-direction: column; align-items: center; justify-content: start; 
+            height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; 
+            overflow-y: auto; padding: 15px 0;
         }
 
-        .param-row { display: flex; align-items: center; margin: 4px 0; width: 100%; font-size: 11px; font-weight: bold; color: #444; }
-        .param-label { width: 80px; text-align: right; margin-right: 10px; }
+        .section-card {
+            width: 85%; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px;
+        }
+        .section-title { font-size: 13px; font-weight: bold; color: #555; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px; }
+
+        /* 滑块样式 */
+        .setting-row { display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; }
+        .setting-label { width: 70px; font-weight: bold; color: #444; }
         input[type="range"] { flex: 1; height: 5px; cursor: pointer; }
-        .param-val { width: 30px; text-align: right; font-family: monospace; color: #0078d7; }
+        .setting-val { width: 30px; text-align: right; color: #0078d7; font-family: monospace; }
 
-        /* 角色选择与上传 */
-        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: start; height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; overflow-y: auto; padding-top: 10px; }
-        
-        .upload-section { width: 90%; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
-        select.device-picker { width: 100%; padding: 8px; margin-bottom: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
-        .file-row { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; }
-        .file-label { font-size: 12px; font-weight: bold; width: 60px; }
-        input[type="file"] { font-size: 10px; width: 160px; }
-        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; display: inline-block; }
+        /* 文件上传 */
+        select.device-picker { width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .file-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 11px;}
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; display: inline-block; margin-left: 5px; }
         .status-dot.loaded { background: #009900; }
 
-        button.primary { background: #0078d7; color: white; border: none; width: 90%; padding: 12px; margin-top: 10px; border-radius: 4px; font-weight: bold; font-size: 16px;}
-        button.ctrl { background: #eee; color: #333; border: 1px solid #ccc; width: 90%; padding: 10px; margin-top: 10px; border-radius: 4px; }
+        /* 连接状态 */
+        #conn-bar { 
+            width: 90%; padding: 8px; margin-bottom: 10px; border-radius: 4px; 
+            text-align: center; font-size: 12px; font-weight: bold; color: #fff; background: #999;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #server-switch { background: rgba(0,0,0,0.2); border: none; color: #fff; font-size: 10px; padding: 2px 5px; cursor: pointer; border-radius: 3px; }
 
-        /* 展示界面 */
+        button.primary { background: #0078d7; color: white; border: none; width: 90%; padding: 14px; border-radius: 6px; font-weight: bold; font-size: 16px; margin-bottom: 10px;}
+        button.ctrl { background: #eee; color: #333; border: 1px solid #ccc; width: 90%; padding: 12px; border-radius: 6px; font-weight: bold;}
+
+        /* --- 展示页 (纯净) --- */
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
         
-        /* 布局调整：给顶部留出空间 */
         #canvas-wrapper { 
-            position: absolute; top: 0; left: 45px; 
-            width: calc(100% - 45px); height: calc(100% - 60px); /* 底部留给状态栏 */
-            background: #fff; border-left: 1px solid #666; 
-            margin-top: 160px; /* 默认 Header 高度 */
-            transition: margin-top 0.3s ease, height 0.3s ease;
+            flex: 1; position: relative; background: #fff; width: 100%; overflow: hidden;
         }
         canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
+        /* 悬浮标尺 (半透明) */
         #y-axis {
-            position: absolute; top: 0; left: 0; width: 45px; height: calc(100% - 60px);
-            background: #dcdcdc; font-family: monospace; font-size: 10px; color: #333;
-            display: flex; flex-direction: column; justify-content: space-between; text-align: right; padding-right: 4px; padding-top: 5px; padding-bottom: 5px;
-            margin-top: 160px;
-            transition: margin-top 0.3s ease, height 0.3s ease;
+            position: absolute; top: 10px; left: 5px; pointer-events: none;
+            display: flex; flex-direction: column; gap: 20px;
         }
-        
+        .ruler-tag { background: rgba(255,255,255,0.7); padding: 1px 3px; font-size: 10px; color: #333; font-family: monospace; border-radius: 2px; }
+
+        /* 底部结果栏 */
         #text-container { 
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 60px;
-            display: flex; align-items: center; justify-content: center; flex-direction: column;
-            background: #e0e0e0; z-index: 10; border-top: 1px solid #ccc; 
+            height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: #e0e0e0; border-top: 1px solid #ccc; z-index: 10;
         }
-        #status-result { font-size: 24px; font-weight: bold; color: #333; }
+        #status-result { font-size: 28px; font-weight: bold; color: #333; }
         #status-sub { font-size: 12px; color: #666; }
-        
-        /* 控制面板 */
-        #control-view { display: none; padding: 10px; text-align: center; height: 100%; background: #eee; overflow-y: auto; }
-        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-        .device-btn { 
-            padding: 15px 5px; font-size: 14px; background: #fff; border: 1px solid #ccc; 
-            border-radius: 4px; cursor: pointer; font-weight: bold; color: #333;
+
+        /* 隐藏的参数面板 (点击右上角呼出) */
+        #hidden-settings {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; background: rgba(255,255,255,0.95);
+            padding: 15px; border-bottom: 1px solid #ccc; z-index: 100;
         }
+        #settings-trigger { position: absolute; top: 0; right: 0; width: 50px; height: 50px; z-index: 90; }
+
+        /* 控制面板 */
+        #control-view { display: none; padding: 15px; text-align: center; height: 100%; background: #eee; overflow-y: auto; }
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .device-btn { padding: 15px; background: #fff; border: 1px solid #ccc; border-radius: 6px; font-weight: bold; color: #333; }
         .device-btn:active { background: #ddd; }
         
-        /* 状态切换开关 */
-        .state-toggle { 
-            display: flex; margin-bottom: 15px; background: #fff; border-radius: 5px; border: 1px solid #ccc; overflow: hidden; 
-        }
-        .state-opt { flex: 1; padding: 10px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .state-toggle { display: flex; margin-bottom: 15px; background: #fff; border-radius: 6px; border: 1px solid #ccc; overflow: hidden; }
+        .state-opt { flex: 1; padding: 12px; font-weight: bold; font-size: 14px; text-align: center;}
         .state-opt.active { background: #d32f2f; color: white; }
         .state-opt.normal.active { background: #009900; }
-
-        /* 顶部收起时的样式 */
-        body.header-collapsed #header-container { transform: translateY(-160px); }
-        body.header-collapsed #header-toggle { bottom: -180px; } /* 把按钮留下来 */
-        body.header-collapsed #canvas-wrapper { margin-top: 20px; height: calc(100% - 80px); }
-        body.header-collapsed #y-axis { margin-top: 20px; height: calc(100% - 80px); }
 
     </style>
 </head>
@@ -97,96 +90,91 @@
 
     <audio id="audio-player" loop crossOrigin="anonymous"></audio>
 
-    <!-- 顶部参数栏 (可折叠) -->
-    <div id="header-container">
-        <div id="app-header">
-            <!-- 核心混合控制 -->
-            <div class="param-row">
-                <span class="param-label" style="color:#009900">Mic Vol:</span>
-                <input type="range" id="p-mic-vol" min="0" max="200" value="100" oninput="updateMix()">
-                <span id="v-mic-vol" class="param-val">100</span>
+    <!-- 1. 设置/启动页 -->
+    <div id="setup-view">
+        <h3 style="margin: 0 0 15px 0;">终端配置 V34</h3>
+
+        <!-- 连接状态 -->
+        <div id="conn-bar">
+            <span id="conn-text">⚪ 连接中...</span>
+            <button id="server-switch" onclick="switchServer()">切换线路</button>
+        </div>
+
+        <!-- 音频参数设置 -->
+        <div class="section-card">
+            <div class="section-title">参数预设 (可演示时微调)</div>
+            <div class="setting-row">
+                <span class="setting-label">麦克风音量:</span>
+                <input type="range" id="p-mic-vol" min="0" max="200" value="100" oninput="syncParams()">
+                <span id="v-mic-vol" class="setting-val">100</span>
             </div>
-            <div class="param-row">
-                <span class="param-label" style="color:#d4a000">File Vol:</span>
-                <input type="range" id="p-file-vol" min="0" max="200" value="100" oninput="updateMix()">
-                <span id="v-file-vol" class="param-val">100</span>
+            <div class="setting-row">
+                <span class="setting-label">文件音量:</span>
+                <input type="range" id="p-file-vol" min="0" max="200" value="100" oninput="syncParams()">
+                <span id="v-file-vol" class="setting-val">100</span>
             </div>
-            <hr style="border:0; border-top:1px solid #ccc; margin:5px 0;">
-            <!-- Audacity 参数 -->
-            <div class="param-row">
-                <span class="param-label">Scale:</span>
-                <input type="range" id="p-scale" min="1" max="8" value="4" oninput="updateParams()">
-                <span id="v-scale" class="param-val">4x</span>
+            <div class="setting-row">
+                <span class="setting-label">显示增益:</span>
+                <input type="range" id="p-gain" min="0" max="120" value="60" oninput="syncParams()">
+                <span id="v-gain" class="setting-val">60</span>
             </div>
-            <div class="param-row">
-                <span class="param-label">Cut:</span>
-                <input type="range" id="p-cut" min="0" max="100" value="40" oninput="updateParams()">
-                <span id="v-cut" class="param-val">40</span>
+            <div class="setting-row">
+                <span class="setting-label">高频补偿:</span>
+                <input type="range" id="p-boost" min="0" max="60" value="25" oninput="syncParams()">
+                <span id="v-boost" class="setting-val">25</span>
             </div>
-            <div class="param-row">
-                <span class="param-label">Gain:</span>
-                <input type="range" id="p-gain" min="0" max="120" value="60" oninput="updateParams()">
-                <span id="v-gain" class="param-val">60</span>
-            </div>
-            <div class="param-row">
-                <span class="param-label" style="color:#d32f2f">Boost:</span>
-                <input type="range" id="p-boost" min="0" max="60" value="25" oninput="updateParams()">
-                <span id="v-boost" class="param-val">25</span>
+            <div class="setting-row">
+                <span class="setting-label">标尺倍率:</span>
+                <input type="range" id="p-scale" min="1" max="8" value="4" oninput="syncParams()">
+                <span id="v-scale" class="setting-val">4x</span>
             </div>
         </div>
-        <div id="header-toggle" onclick="toggleHeader()">Hide Params ▲</div>
-    </div>
 
-    <!-- 角色选择 / 文件上传 -->
-    <div id="role-select">
-        <h3 style="margin-bottom:5px;">V33 Audio Mixer</h3>
-        <p style="font-size:11px; color:#666; margin-bottom:15px;">Select device -> Upload Normal/Abnormal files</p>
-
-        <!-- 动态文件上传区 -->
-        <div class="upload-section">
-            <label style="font-size:12px; font-weight:bold;">Target Device:</label>
+        <!-- 文件上传 -->
+        <div class="section-card">
+            <div class="section-title">音频文件加载</div>
             <select id="device-picker" class="device-picker" onchange="updateUploadUI()">
-                <!-- JS 会自动填充这里 -->
+                <!-- JS生成 -->
             </select>
-
             <div class="file-row">
-                <span class="file-label">Normal:</span>
+                <span>正常 (Normal):</span>
                 <input type="file" id="file-input-normal" accept=".wav, .mp3">
                 <span id="dot-normal" class="status-dot"></span>
             </div>
             <div class="file-row">
-                <span class="file-label">Abnormal:</span>
+                <span>异常 (Abnormal):</span>
                 <input type="file" id="file-input-abnormal" accept=".wav, .mp3">
                 <span id="dot-abnormal" class="status-dot"></span>
             </div>
         </div>
 
         <!-- 麦克风开关 -->
-        <div style="width:90%; display:flex; align-items:center; margin-bottom:10px;">
+        <div style="width:85%; display:flex; align-items:center; margin-bottom:15px;">
             <input type="checkbox" id="use-mic" checked>
-            <label for="use-mic" style="font-size:14px; margin-left:5px;">Enable Microphone Overlay</label>
+            <label for="use-mic" style="font-size:14px; margin-left:8px;">启用环境麦克风叠加</label>
         </div>
-        
-        <button class="primary" onclick="startDisplay()">Launch Display</button>
-        <button class="ctrl" onclick="startController()">Remote Control</button>
-        
-        <div style="font-size:10px; color:#999; margin-top:20px; text-align:center;">
-            Tip: Upload files for each device individually.<br>
-            They are stored in memory.
-        </div>
+
+        <button class="primary" onclick="startDisplay()">启动展示端</button>
+        <button class="ctrl" onclick="startController()">我是控制端 (遥控)</button>
     </div>
 
-    <!-- 展示端 -->
+    <!-- 2. 展示端 (纯净模式) -->
     <div id="display-view">
-        <div id="y-axis">
-            <span id="lbl-max">88k</span>
-            <span id="lbl-mid1">66k</span>
-            <span id="lbl-mid2">44k</span>
-            <span id="lbl-mid3">22k</span>
-            <span>0Hz</span>
+        <!-- 隐藏的参数面板容器 -->
+        <div id="hidden-settings">
+            <!-- 这里的内容会用 JS 从 setup 页面复制过来，保持同步 -->
+            <div style="text-align:center; font-size:12px; color:#999; margin-bottom:10px;">实时微调 (再次点击右上角关闭)</div>
+            <div id="settings-clone-target"></div>
         </div>
+        <!-- 隐形触发器 -->
+        <div id="settings-trigger" onclick="toggleHiddenSettings()"></div>
 
         <div id="canvas-wrapper">
+            <div id="y-axis">
+                <span class="ruler-tag" id="lbl-max">88k</span>
+                <span class="ruler-tag" id="lbl-mid">44k</span>
+                <span class="ruler-tag">0Hz</span>
+            </div>
             <canvas id="visualizer"></canvas>
         </div>
         
@@ -196,64 +184,65 @@
         </div>
     </div>
 
-    <!-- 控制端 -->
+    <!-- 3. 控制端 -->
     <div id="control-view">
         <h3>Control Panel</h3>
+        <p id="ctrl-conn-status" style="font-size:12px; color:#666;">Check Connection...</p>
         
-        <!-- 状态切换开关 -->
         <div class="state-toggle">
-            <div id="btn-state-normal" class="state-opt normal active" onclick="setGlobalState('normal')">Normal Run</div>
+            <div id="btn-state-normal" class="state-opt normal active" onclick="setGlobalState('normal')">Normal</div>
             <div id="btn-state-abnormal" class="state-opt" onclick="setGlobalState('abnormal')">Abnormal</div>
         </div>
 
-        <button class="device-btn" style="width:100%; margin-bottom:15px; background:#333; color:#fff;" onclick="sendCmd('No Device')">NO DEVICE (Reset)</button>
+        <button class="device-btn" style="width:100%; margin-bottom:20px; background:#333; color:#fff;" onclick="sendCmd('No Device')">NO DEVICE (Reset)</button>
 
-        <div id="device-grid" class="grid-container">
-            <!-- JS 生成按钮 -->
-        </div>
+        <div id="device-grid" class="grid-container"></div>
     </div>
 
     <script>
-        // --- 配置区 ---
-        const myTopic = "demo/class/v33_mixer"; 
-        const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
+        // --- MQTT 配置 ---
+        const myTopic = "demo/class/final_v34_stable"; 
         
-        // 设备列表 (严格按照要求)
+        // 服务器列表 (备用方案)
+        const servers = [
+            { host: "broker.emqx.io", port: 8084, name: "EMQX (SSL)" },
+            { host: "broker.hivemq.com", port: 8884, name: "HiveMQ (SSL)" }
+        ];
+        let currentServerIdx = 0;
+
+        // 设备列表
         const deviceList = [
             "Router", "Projector", "Microwave", "Heater", "Desktop",
             "AirConditioner", "3DPrinter", "Refridgerator", "Humidifier", "DeskLamp"
         ];
 
-        // 存储文件 Blob URL: registry[deviceName][state] = blobUrl
         const registry = {};
         deviceList.forEach(d => registry[d] = { normal: null, abnormal: null });
 
-        // 全局状态
-        let currentGlobalState = 'normal'; // 'normal' or 'abnormal'
+        // 全局变量
         let client;
-        let lastText = "";
-        
-        // 音频相关
-        let audioCtx, analyser;
-        let fileNode, micNode, fileGain, micGain;
+        let currentGlobalState = 'normal';
+        let audioCtx, analyser, fileNode, micNode, fileGain, micGain;
         const audioPlayer = document.getElementById('audio-player');
-
-        // 参数
+        
+        // 参数对象
         let p = { scale:4, cut:40, gain:60, boost:25, micVol:100, fileVol:100 };
 
-        // --- 1. UI 初始化逻辑 ---
+        // --- 初始化 ---
         window.onload = function() {
-            // 初始化上传下拉框
+            initUI();
+            connectMQTT(false); // 页面加载时尝试连接
+        };
+
+        function initUI() {
             const picker = document.getElementById('device-picker');
             const grid = document.getElementById('device-grid');
 
             deviceList.forEach(dev => {
-                // 上传选项
                 let opt = document.createElement('option');
                 opt.value = dev; opt.innerText = dev;
                 picker.appendChild(opt);
 
-                // 控制端按钮
                 let btn = document.createElement('button');
                 btn.className = "device-btn";
                 btn.innerText = dev;
@@ -261,35 +250,63 @@
                 grid.appendChild(btn);
             });
 
-            // 监听上传
             document.getElementById('file-input-normal').addEventListener('change', (e) => handleUpload(e, 'normal'));
             document.getElementById('file-input-abnormal').addEventListener('change', (e) => handleUpload(e, 'abnormal'));
-        };
-
-        function handleUpload(e, state) {
-            const dev = document.getElementById('device-picker').value;
-            if(e.target.files[0]) {
-                registry[dev][state] = URL.createObjectURL(e.target.files[0]);
-                updateUploadUI(); // 刷新红绿点
-            }
         }
 
-        function updateUploadUI() {
-            const dev = document.getElementById('device-picker').value;
-            const normDot = document.getElementById('dot-normal');
-            const abDot = document.getElementById('dot-abnormal');
-            
-            normDot.className = registry[dev].normal ? "status-dot loaded" : "status-dot";
-            abDot.className = registry[dev].abnormal ? "status-dot loaded" : "status-dot";
+        // --- MQTT 逻辑 ---
+        function switchServer() {
+            if(client) { try{client.disconnect();}catch(e){} }
+            currentServerIdx = (currentServerIdx + 1) % servers.length;
+            connectMQTT(false);
         }
 
-        function toggleHeader() {
-            document.body.classList.toggle('header-collapsed');
-            const btn = document.getElementById('header-toggle');
-            btn.innerText = document.body.classList.contains('header-collapsed') ? "Show Params ▼" : "Hide Params ▲";
+        function connectMQTT(isReceiver) {
+            const srv = servers[currentServerIdx];
+            const uiStatus = document.getElementById('conn-text');
+            uiStatus.innerText = `🟡 连接 ${srv.name}...`;
+            uiStatus.parentElement.style.background = "#d4a000";
+
+            const clientID = "client_" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(srv.host, srv.port, "/mqtt", clientID);
+
+            client.connect({
+                useSSL: true,
+                timeout: 5,
+                onSuccess: () => {
+                    console.log("Connected to " + srv.name);
+                    uiStatus.innerText = "🟢 已连接 (" + srv.name + ")";
+                    uiStatus.parentElement.style.background = "#28a745";
+                    
+                    const ctrlStatus = document.getElementById('ctrl-conn-status');
+                    if(ctrlStatus) { ctrlStatus.innerText = "✅ Online: " + srv.name; ctrlStatus.style.color="green"; }
+
+                    if(isReceiver) client.subscribe(myTopic);
+                },
+                onFailure: (e) => {
+                    console.log("Failed", e);
+                    uiStatus.innerText = "🔴 连接失败 (点此切换)";
+                    uiStatus.parentElement.style.background = "#dc3545";
+                }
+            });
+
+            client.onConnectionLost = (resp) => {
+                if (resp.errorCode !== 0) {
+                    console.log("Lost", resp);
+                    uiStatus.innerText = "🔴 断开 (重连中...)";
+                    setTimeout(() => connectMQTT(isReceiver), 2000);
+                }
+            };
+
+            client.onMessageArrived = (msg) => {
+                if(document.getElementById('display-view').style.display === 'flex') {
+                    const data = JSON.parse(msg.payloadString);
+                    if(data.type === 'device') executeCommand(data.val, data.state);
+                }
+            };
         }
 
-        // --- 2. 核心：混合音频引擎 ---
+        // --- 音频逻辑 ---
         async function initAudioEngine() {
             if(audioCtx) return;
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -298,114 +315,61 @@
             analyser.fftSize = 4096;
             analyser.smoothingTimeConstant = 0.1;
 
-            // A. 文件通道
             fileNode = audioCtx.createMediaElementSource(audioPlayer);
             fileGain = audioCtx.createGain();
             fileNode.connect(fileGain);
             fileGain.connect(analyser);
-            fileGain.connect(audioCtx.destination); // 文件声音要听到
+            fileGain.connect(audioCtx.destination);
 
-            // B. 麦克风通道 (如果勾选)
             if(document.getElementById('use-mic').checked) {
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
-                    });
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
                     micNode = audioCtx.createMediaStreamSource(stream);
                     micGain = audioCtx.createGain();
                     micNode.connect(micGain);
-                    micGain.connect(analyser); // 麦克风只进分析，不进 destination (防止啸叫)
-                } catch(e) {
-                    console.log("Mic failed", e);
-                    alert("Mic access denied. Only file playback will work.");
-                }
+                    micGain.connect(analyser);
+                } catch(e) { console.warn("Mic denied"); }
             }
-
-            updateMix(); // 应用初始音量
+            syncParams();
             startVisualizer();
         }
 
-        function updateMix() {
+        function syncParams() {
             p.micVol = parseInt(document.getElementById('p-mic-vol').value);
             p.fileVol = parseInt(document.getElementById('p-file-vol').value);
-            
-            document.getElementById('v-mic-vol').innerText = p.micVol;
-            document.getElementById('v-file-vol').innerText = p.fileVol;
+            p.scale = parseInt(document.getElementById('p-scale').value);
+            p.gain = parseInt(document.getElementById('p-gain').value);
+            p.boost = parseInt(document.getElementById('p-boost').value);
+            p.cut = parseInt(document.getElementById('p-cut').value);
+
+            // 更新所有 UI 显示数值
+            ['mic-vol','file-vol','scale','gain','boost','cut'].forEach(k => {
+                const el = document.getElementById('v-'+k);
+                if(el) el.innerText = p[k] + (k==='scale'?'x':'');
+                // 同步隐藏面板里的 input
+                const hiddenInput = document.querySelector(`#hidden-settings #p-${k}`);
+                if(hiddenInput) hiddenInput.value = p[k];
+            });
 
             if(micGain) micGain.gain.value = p.micVol / 100;
             if(fileGain) fileGain.gain.value = p.fileVol / 100;
-        }
 
-        function updateParams() {
-            p.scale = parseInt(document.getElementById('p-scale').value);
-            p.cut = parseInt(document.getElementById('p-cut').value);
-            p.gain = parseInt(document.getElementById('p-gain').value);
-            p.boost = parseInt(document.getElementById('p-boost').value);
-
-            document.getElementById('v-scale').innerText = p.scale + "x";
-            document.getElementById('v-cut').innerText = p.cut;
-            document.getElementById('v-gain').innerText = p.gain;
-            document.getElementById('v-boost').innerText = p.boost;
-
-            // 标尺更新
             const base = 22;
             document.getElementById('lbl-max').innerText = (base * p.scale) + "k";
-            document.getElementById('lbl-mid1').innerText = (base * p.scale * 0.75).toFixed(0) + "k";
-            document.getElementById('lbl-mid2').innerText = (base * p.scale * 0.5).toFixed(0) + "k";
-            document.getElementById('lbl-mid3').innerText = (base * p.scale * 0.25).toFixed(0) + "k";
+            document.getElementById('lbl-mid').innerText = (base * p.scale * 0.5).toFixed(0) + "k";
         }
 
-        // --- 3. 业务逻辑 ---
-        function executeCommand(device, state) {
-            initAudioEngine();
-            // 解决“切换不明显”：强制暂停并清空画布一瞬间
-            audioPlayer.pause();
-            
-            // UI 更新
-            const resEl = document.getElementById('status-result');
-            const subEl = document.getElementById('status-sub');
-            
-            if (device === 'No Device') {
-                resEl.innerText = "NO DEVICE"; resEl.style.color = "#333";
-                subEl.innerText = "Monitoring Environment...";
-                // 无设备时，只听麦克风，不放文件
-                return;
-            }
-
-            // 获取音频源
-            const fileUrl = registry[device][state];
-            
-            resEl.innerText = device;
-            subEl.innerText = state === 'normal' ? "Status: Normal" : "Status: ABNORMAL!";
-            resEl.style.color = state === 'normal' ? "#009900" : "#d32f2f";
-            subEl.style.color = state === 'normal' ? "#555" : "#d32f2f";
-
-            speakText(device + ", " + state);
-
-            if (fileUrl) {
-                audioPlayer.src = fileUrl;
-                // 稍微延时播放，制造“切换感”
-                setTimeout(() => {
-                    audioPlayer.play().catch(e=>console.log(e));
-                }, 100);
-            } else {
-                // 如果没传这个状态的文件，只显示文字，不播声音（或只播麦克风）
-                console.log("No file for " + device + " " + state);
-            }
-        }
-
-        // --- 4. 可视化 (混合版) ---
+        // --- 可视化 ---
         function startVisualizer() {
             const canvas = document.getElementById('visualizer');
             const ctx = canvas.getContext('2d', { alpha: false });
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Float32Array(bufferLength);
 
-            // Audacity 调色板
             const colorMap = [];
             for (let i = 0; i < 256; i++) {
                 let r, g, b; let val = i/255;
-                if(val<0.1){ let gray=255-(val*40); r=gray;g=gray;b=gray; }
+                if(val<0.1){ let k=255-(val*40); r=k;g=k;b=k; }
                 else if(val<0.4){ let k=(val-0.1)/0.3; r=100*(1-k); g=100*(1-k); b=255; }
                 else if(val<0.8){ let k=(val-0.4)/0.4; r=200*k+50; g=50*(1-k); b=255; }
                 else{ let k=(val-0.8)/0.2; r=255; g=0; b=255*(1-k); }
@@ -415,94 +379,122 @@
             function draw() {
                 requestAnimationFrame(draw);
                 analyser.getFloatFrequencyData(dataArray);
-                
                 const w = canvas.width; const h = canvas.height;
                 ctx.drawImage(canvas, 1, 0, w-1, h, 0, 0, w-1, h);
-
                 const nyquist = audioCtx.sampleRate / 2;
 
                 for (let y = 0; y < h; y++) {
                     const percent = 1 - (y/h);
-                    const targetFreq = percent * nyquist; // 0-22k (或24k)
+                    const targetFreq = percent * nyquist;
+                    const bin = Math.floor((targetFreq/nyquist) * bufferLength);
+                    if(bin >= bufferLength) continue;
+
+                    let db = dataArray[bin]; if(db===-Infinity) db=-160;
                     
-                    const binIndex = Math.floor((targetFreq/nyquist) * bufferLength);
-                    if(binIndex >= bufferLength) continue;
-
-                    let db = dataArray[binIndex];
-                    if(db === -Infinity) db = -160;
-
-                    // 增强算法
-                    let boostAmount = 0;
-                    if(targetFreq > 2000) boostAmount = p.boost * Math.log10(targetFreq/2000);
+                    let boost = 0;
+                    if(targetFreq > 2000) boost = p.boost * Math.log10(targetFreq/2000);
                     
-                    let processed = db + p.gain + boostAmount;
-                    let norm = (processed + 100) * 2.5; 
-                    norm -= (p.cut * 2.5);
-
-                    if(norm < 0) norm = 0; if(norm > 255) norm = 255;
+                    let norm = (db + p.gain + boost + 100) * 2.5 - (p.cut * 2.5);
+                    if(norm<0) norm=0; if(norm>255) norm=255;
                     
                     ctx.fillStyle = colorMap[Math.floor(norm)];
                     ctx.fillRect(w-1, y, 1, 1);
                 }
             }
-            // 修正画布尺寸
             canvas.width = canvas.parentElement.offsetWidth;
             canvas.height = canvas.parentElement.offsetHeight;
             draw();
         }
 
-        // --- 5. 控制逻辑 ---
+        // --- 业务逻辑 ---
+        function handleUpload(e, state) {
+            const dev = document.getElementById('device-picker').value;
+            if(e.target.files[0]) {
+                registry[dev][state] = URL.createObjectURL(e.target.files[0]);
+                const dot = document.getElementById(state==='normal'?'dot-normal':'dot-abnormal');
+                dot.className = "status-dot loaded";
+            }
+        }
+
+        function updateUploadUI() {
+            const dev = document.getElementById('device-picker').value;
+            document.getElementById('dot-normal').className = registry[dev].normal ? "status-dot loaded" : "status-dot";
+            document.getElementById('dot-abnormal').className = registry[dev].abnormal ? "status-dot loaded" : "status-dot";
+        }
+
+        function executeCommand(device, state) {
+            initAudioEngine();
+            audioPlayer.pause();
+            
+            const resEl = document.getElementById('status-result');
+            const subEl = document.getElementById('status-sub');
+            
+            if (device === 'No Device') {
+                resEl.innerText = "NO DEVICE"; resEl.style.color = "#333";
+                subEl.innerText = "Standby";
+                return;
+            }
+
+            resEl.innerText = device;
+            resEl.style.color = state === 'normal' ? "#009900" : "#d32f2f";
+            subEl.innerText = state === 'normal' ? "Normal" : "ABNORMAL!";
+            subEl.style.color = state === 'normal' ? "#555" : "#d32f2f";
+            
+            speakText(device + " " + state);
+
+            const url = registry[device][state];
+            if(url) {
+                audioPlayer.src = url;
+                setTimeout(() => audioPlayer.play().catch(e=>{}), 100);
+            }
+        }
+
         function setGlobalState(state) {
             currentGlobalState = state;
             document.getElementById('btn-state-normal').className = state==='normal'?"state-opt normal active":"state-opt normal";
             document.getElementById('btn-state-abnormal').className = state==='abnormal'?"state-opt active":"state-opt";
-            
-            // 发送状态变更给展示端 (通过MQTT)
-            if(client) {
-                const msg = new Paho.MQTT.Message(JSON.stringify({type:'state', val:state}));
-                msg.destinationName = myTopic;
-                client.send(msg);
-            }
         }
 
-        function sendCmd(device) {
-            if(!client || !client.isConnected()) { alert("MQTT Disconnected"); return; }
-            const payload = JSON.stringify({ type:'device', val:device, state:currentGlobalState });
+        function sendCmd(dev) {
+            if(!client || !client.isConnected()) { alert("未连接服务器"); return; }
+            const payload = JSON.stringify({ type:'device', val:dev, state:currentGlobalState });
             const message = new Paho.MQTT.Message(payload);
             message.destinationName = myTopic;
             client.send(message);
         }
 
-        // --- 6. 启动与MQTT ---
-        function startDisplay() {
-            document.getElementById('role-select').style.display = 'none';
-            document.getElementById('display-view').style.display = 'flex';
-            initAudioEngine(); // 尝试启动
-            connectMQTT(true);
-        }
-        function startController() {
-            document.getElementById('role-select').style.display = 'none';
-            document.getElementById('control-view').style.display = 'block';
-            connectMQTT(false);
-        }
         function speakText(text) {
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
-            u.lang = 'en-US'; // 英文播报
-            window.speechSynthesis.speak(u);
+            u.lang = 'en-US'; window.speechSynthesis.speak(u);
         }
-        function connectMQTT(isReceiver) {
-            const clientID = "id_" + Math.random().toString(16).substr(2, 8);
-            client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
-            client.connect({ onSuccess: () => { if(isReceiver) client.subscribe(myTopic); } });
-            client.onMessageArrived = (msg) => { 
-                if(document.getElementById('display-view').style.display === 'flex') {
-                    const data = JSON.parse(msg.payloadString);
-                    if(data.type === 'device') {
-                        executeCommand(data.val, data.state);
-                    }
-                }
-            };
+
+        function startDisplay() {
+            // 将设置里的滑块复制到隐藏面板，方便演示时微调
+            const setupCard = document.querySelector('.section-card').innerHTML;
+            document.getElementById('settings-clone-target').innerHTML = setupCard;
+            
+            document.getElementById('setup-view').style.display = 'none';
+            document.getElementById('display-view').style.display = 'flex';
+            
+            // 重新绑定隐藏面板里的事件
+            document.querySelectorAll('#hidden-settings input').forEach(input => {
+                input.oninput = syncParams;
+            });
+
+            initAudioEngine();
+            connectMQTT(true);
+        }
+
+        function startController() {
+            document.getElementById('setup-view').style.display = 'none';
+            document.getElementById('control-view').style.display = 'block';
+            connectMQTT(false);
+        }
+
+        function toggleHiddenSettings() {
+            const el = document.getElementById('hidden-settings');
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
         }
     </script>
 </body>

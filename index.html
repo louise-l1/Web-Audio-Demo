@@ -234,54 +234,54 @@
         }
 
         // --- 音频引擎 (静音播放 + 渐变) ---
+        let isVisualizerRunning = false; // 防止重复启动
+
         async function initAudioEngine() {
-            // 1. 确保 AudioContext 存在
+            // 1. 初始化 Context
             if(!audioCtx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 audioCtx = new AudioContext();
                 analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 4096;
-                analyser.smoothingTimeConstant = 0.2;
+                analyser.fftSize = 2048; // 回退到 2048 以获得更灵敏的反应
+                analyser.smoothingTimeConstant = 0.1;
 
-                // --- 文件通道 ---
+                // 文件通道
                 fileNode = audioCtx.createMediaElementSource(audioPlayer);
                 fileGain = audioCtx.createGain();
                 fileNode.connect(fileGain);
-                fileGain.connect(analyser);
-                // 注意：这里不连 destination，实现静音播放
-
-                // --- 立即启动视觉 (不要等麦克风) ---
-                syncParams();
-                startVisualizer();
+                fileGain.connect(analyser); 
+                // fileGain 不连 destination，保持静音，只看波形
             }
 
-            // 2. 强制唤醒 (关键修复)
-            // 浏览器策略经常会导致 Context 自动挂起 (Suspended)，导致没信号
+            // 2. 强制唤醒 (防止黑屏的关键)
             if (audioCtx.state === 'suspended') {
                 await audioCtx.resume();
             }
 
-            // 3. 麦克风通道 (异步加载，不阻塞主线程)
-            // 只有当 micNode 还没创建，且用户勾选了麦克风时才加载
+            // 3. 麦克风通道 (保底信号)
             if(document.getElementById('use-mic').checked && !micNode) {
-                navigator.mediaDevices.getUserMedia({ 
-                    audio: { 
-                        echoCancellation: false, 
-                        noiseSuppression: false, 
-                        autoGainControl: false 
-                    } 
-                }).then(stream => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+                    });
                     micNode = audioCtx.createMediaStreamSource(stream);
                     micGain = audioCtx.createGain();
                     micNode.connect(micGain);
-                    micGain.connect(analyser);
-                    // 重新同步一下音量
+                    micGain.connect(analyser); // 麦克风信号送入分析器
+                    
+                    // 应用初始音量
                     micGain.gain.value = parseInt(document.getElementById('p-mic-vol').value) / 100;
-                    console.log("麦克风已混入");
-                }).catch(e => {
-                    console.warn("无法获取麦克风权限", e);
-                    // 即使失败也不报错，保证文件播放正常
-                });
+                    console.log("麦克风已连接 - 保底信号就绪");
+                } catch(e) {
+                    console.warn("麦克风获取失败:", e);
+                }
+            }
+
+            // 启动绘图
+            syncParams();
+            if (!isVisualizerRunning) {
+                startVisualizer();
+                isVisualizerRunning = true;
             }
         }
 
@@ -360,39 +360,94 @@
             document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
         }
 
-        function startVisualizer() {
+function startVisualizer() {
             const canvas = document.getElementById('visualizer');
             const ctx = canvas.getContext('2d', { alpha: false });
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Float32Array(bufferLength);
+            
+            // 预生成高对比度调色板 (仿 Audacity: 白 -> 蓝 -> 红)
             const colorMap = [];
-            for (let i=0; i<256; i++) {
-                let r,g,b; let val=i/255;
-                if(val<0.1){ let k=255-(val*40); r=k;g=k;b=k; }
-                else if(val<0.4){ let k=(val-0.1)/0.3; r=100*(1-k); g=100*(1-k); b=255; }
-                else if(val<0.8){ let k=(val-0.4)/0.4; r=200*k+50; g=50*(1-k); b=255; }
-                else{ let k=(val-0.8)/0.2; r=255; g=0; b=255*(1-k); }
+            for (let i = 0; i < 256; i++) {
+                let r, g, b; 
+                let val = i / 255.0;
+                
+                if (val < 0.1) { 
+                    // 背景：灰白带杂色 (仿真实底噪)
+                    let noise = 245 - Math.random() * 10;
+                    r = noise; g = noise; b = noise;
+                } else if (val < 0.4) { 
+                    // 弱信号：蓝
+                    let k = (val - 0.1) / 0.3; 
+                    r = 100 * (1 - k); g = 100 * (1 - k); b = 255;
+                } else if (val < 0.7) { 
+                    // 中信号：紫
+                    let k = (val - 0.4) / 0.3; 
+                    r = 150 * k + 50; g = 50 * (1 - k); b = 255;
+                } else { 
+                    // 强信号：红
+                    let k = (val - 0.7) / 0.3; 
+                    r = 255; g = 0; b = 255 * (1 - k);
+                }
                 colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
             }
+
+            // 缓冲区
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Float32Array(bufferLength);
+
             function draw() {
                 requestAnimationFrame(draw);
+                
+                // 获取数据 (-Infinity ~ 0 dB)
                 analyser.getFloatFrequencyData(dataArray);
-                const w = canvas.width; const h = canvas.height;
-                ctx.drawImage(canvas, 1, 0, w-1, h, 0, 0, w-1, h);
-                const nyquist = audioCtx.sampleRate/2;
-                for (let y=0; y<h; y++) {
-                    const percent = 1-(y/h);
-                    const targetFreq = percent*nyquist;
-                    const bin = Math.floor((targetFreq/nyquist)*bufferLength);
-                    if(bin>=bufferLength) continue;
-                    let db = dataArray[bin]; if(db===-Infinity) db=-160;
-                    let boost = targetFreq>2000 ? p.boost * Math.log10(targetFreq/2000) : 0;
-                    let norm = (db + p.gain + boost + 100)*2.5 - (p.cut*2.5);
-                    if(norm<0) norm=0; if(norm>255) norm=255;
-                    ctx.fillStyle = colorMap[Math.floor(norm)];
-                    ctx.fillRect(w-1, y, 1, 1);
+
+                // 1. 滚动效果
+                const w = canvas.width;
+                const h = canvas.height;
+                ctx.drawImage(canvas, 1, 0, w - 1, h, 0, 0, w - 1, h);
+
+                const sampleRate = audioCtx.sampleRate; // 通常 44100 or 48000
+                const nyquist = sampleRate / 2;
+
+                // 2. 绘制新的一列
+                for (let y = 0; y < h; y++) {
+                    const percent = 1 - (y / h);
+                    const targetFreq = percent * nyquist;
+                    
+                    // 找到对应的频率点
+                    const bin = Math.floor((targetFreq / nyquist) * bufferLength);
+                    if (bin >= bufferLength) continue;
+
+                    let db = dataArray[bin];
+                    // 修正死值
+                    if (db === -Infinity || db === -1000) db = -160;
+
+                    // --- 宽松的计算逻辑 ---
+                    
+                    // 高频提升 (模拟 Audacity 的 Slope)
+                    let boost = 0;
+                    if (targetFreq > 2000) {
+                        boost = p.boost * Math.log10(targetFreq / 2000);
+                    }
+
+                    // 计算显示强度
+                    // 基础分贝 + 增益 + 高频补偿
+                    // +100 是为了把负数分贝转正，方便计算
+                    let rawValue = db + p.gain + boost + 100;
+
+                    // 映射到 0-255 颜色空间
+                    // 乘以 scale 放大对比度，减去 cut 去除底噪
+                    let colorIndex = (rawValue * 2.5) - (p.cut * 3);
+
+                    // 边界限制
+                    if (colorIndex < 0) colorIndex = 0;
+                    if (colorIndex > 255) colorIndex = 255;
+
+                    // 绘制像素
+                    ctx.fillStyle = colorMap[Math.floor(colorIndex)];
+                    ctx.fillRect(w - 1, y, 1, 1);
                 }
             }
+            // 修正画布大小
             canvas.width = canvas.parentElement.offsetWidth;
             canvas.height = canvas.parentElement.offsetHeight;
             draw();

@@ -3,6 +3,266 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spectrogram V28 (Window Mode)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; background-color: #1a1a1a; color: #fff; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
+        
+        /* 顶部标题 */
+        #app-header {
+            height: 50px; background: #333; display: flex; align-items: center; justify-content: center;
+            border-bottom: 1px solid #555; font-size: 14px; color: #aaa;
+        }
+
+        /* --- 核心布局：视窗 + 结论 --- */
+
+        /* 1. 视频视窗 (Monitor) */
+        #monitor-container {
+            width: 100%;
+            height: 55%; /* 占据屏幕上半部分 */
+            background: #000;
+            position: relative;
+            border-bottom: 2px solid #444;
+            display: flex; align-items: center; justify-content: center;
+        }
+        
+        /* 视频本身：保持比例，不强行拉伸 */
+        video {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            display: block;
+        }
+
+        /* 2. 结论区域 (Result) */
+        #result-panel {
+            flex: 1; /* 占据剩余空间 */
+            height: 45%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: #222;
+            padding: 20px; text-align: center;
+        }
+
+        #result-label { font-size: 14px; color: #888; margin-bottom: 10px; letter-spacing: 1px; }
+        #status-result { 
+            font-size: 40px; /* 超大字体 */
+            font-weight: bold; 
+            color: #fff; 
+            line-height: 1.2;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        #status-sub { font-size: 16px; color: #666; margin-top: 10px; }
+
+        /* 角色选择页 (保持不变) */
+        #role-select { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; z-index: 50; background: #f0f0f0; position: absolute; top:0; left:0; color:#333; overflow-y: auto;}
+        
+        .upload-card { background: #fff; padding: 10px; border: 1px solid #ccc; width: 85%; margin-bottom: 10px; border-radius: 4px; text-align: left; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+        .upload-label { font-weight: bold; font-size: 13px; display: block; margin-bottom: 5px; }
+        input[type="file"] { font-size: 11px; width: 100%; }
+
+        button { padding: 12px 20px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #999; background: #e0e0e0; color: #333; font-weight: bold; }
+        button.primary { background: #0078d7; color: white; border: none; width: 80%; padding: 15px; margin-top: 20px; }
+
+        #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
+        
+        /* 隐形按钮：覆盖全屏，保证盲操成功率 */
+        #secret-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .secret-zone {}
+
+        /* 控制端样式 */
+        #control-view { display: none; padding: 20px; text-align: center; height: 100%; background: #eee; padding-top: 80px;}
+        .ctrl-btn { width: 100%; padding: 20px; margin-bottom: 15px; font-size: 18px; background: #fff; border: 1px solid #ccc; color: #333; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部标题 -->
+    <div id="app-header">智能声纹识别终端 V2.0</div>
+
+    <!-- 角色选择 -->
+    <div id="role-select">
+        <h3>V28 视窗+结论版</h3>
+        <p style="font-size:11px; color:#666; margin-bottom:20px;">上传视频后，上方显示视频，下方显示大字结果</p>
+        
+        <div class="upload-card" style="border-left: 4px solid #999;">
+            <span class="upload-label">0. 待机视频 (Idle)</span>
+            <input type="file" id="file-idle" accept="video/*">
+        </div>
+        <div class="upload-card" style="border-left: 4px solid #009900;">
+            <span class="upload-label">1. 冰箱视频 (Fridge)</span>
+            <input type="file" id="file-fridge" accept="video/*">
+        </div>
+        <div class="upload-card" style="border-left: 4px solid #d4a000;">
+            <span class="upload-label">2. 台灯视频 (Lamp)</span>
+            <input type="file" id="file-lamp" accept="video/*">
+        </div>
+        <div class="upload-card" style="border-left: 4px solid #cc0000;">
+            <span class="upload-label">3. 异常视频 (Abnormal)</span>
+            <input type="file" id="file-abnormal" accept="video/*">
+        </div>
+        
+        <button class="primary" onclick="startDisplay()">启动展示端</button>
+        <button onclick="startController()" style="width:80%; margin-top:0;">启动控制端</button>
+    </div>
+
+    <!-- 展示端 -->
+    <div id="display-view">
+        <!-- 隐形点击层 (最顶层) -->
+        <div id="secret-layer">
+            <div class="secret-zone" onclick="changeMode('fridge')"></div>
+            <div class="secret-zone" onclick="changeMode('lamp')"></div>
+            <div class="secret-zone" onclick="changeMode('abnormal')"></div>
+            <div class="secret-zone" onclick="changeMode('reset')"></div>
+        </div>
+
+        <!-- 上半部分：视频窗口 -->
+        <div id="monitor-container">
+            <!-- 视频静音循环播放，只负责视觉 -->
+            <video id="main-video" playsinline loop muted></video>
+        </div>
+
+        <!-- 下半部分：大字结论 -->
+        <div id="result-panel">
+            <div id="result-label">识别结果 / RESULT</div>
+            <div id="status-result">等待检测</div>
+            <div id="status-sub">系统待机中...</div>
+        </div>
+    </div>
+
+    <!-- 控制端 -->
+    <div id="control-view">
+        <h3 style="color:#333">遥控面板</h3>
+        <button class="ctrl-btn" onclick="sendMqttCommand('reset')">复位 / 无设备</button>
+        <button class="ctrl-btn" style="color:#009900" onclick="sendMqttCommand('fridge')">检测到：电冰箱</button>
+        <button class="ctrl-btn" style="color:#d4a000" onclick="sendMqttCommand('lamp')">检测到：台灯</button>
+        <button class="ctrl-btn" style="color:#cc0000" onclick="sendMqttCommand('abnormal')">检测到：异常</button>
+    </div>
+
+    <script>
+        // 固定 Topic，确保两端一致
+        const myTopic = "demo/class/v28_window_mode"; 
+        const mqttConfig = { host: "broker.emqx.io", port: 8084, path: "/mqtt" };
+        let client;
+        let lastText = "";
+        
+        const videoPlayer = document.getElementById('main-video');
+        const fileURLs = { idle: null, fridge: null, lamp: null, abnormal: null };
+
+        // 监听上传
+        ['idle', 'fridge', 'lamp', 'abnormal'].forEach(key => {
+            document.getElementById(`file-${key}`).addEventListener('change', function(e){
+                if(e.target.files[0]) fileURLs[key] = URL.createObjectURL(e.target.files[0]);
+            });
+        });
+
+        // --- 核心切换逻辑 ---
+        function changeMode(mode) {
+            let text = "", sub = "", color = "#fff", videoSrc = null;
+
+            switch(mode) {
+                case 'fridge': 
+                    text = "电冰箱"; 
+                    sub = "设备工作正常"; 
+                    color = "#00e676"; // 亮绿色
+                    videoSrc = fileURLs.fridge; 
+                    break; 
+                case 'lamp': 
+                    text = "台灯"; 
+                    sub = "设备工作中"; 
+                    color = "#ffea00"; // 亮黄色
+                    videoSrc = fileURLs.lamp; 
+                    break;
+                case 'abnormal': 
+                    text = "异常震动"; 
+                    sub = "建议立即检查"; 
+                    color = "#ff5252"; // 红色警告
+                    videoSrc = fileURLs.abnormal; 
+                    break;
+                case 'reset': 
+                    text = "无设备"; 
+                    sub = "正在扫描环境..."; 
+                    color = "#999"; 
+                    videoSrc = fileURLs.idle; 
+                    break;
+            }
+
+            // 更新大字 UI
+            document.getElementById('status-result').innerText = text;
+            document.getElementById('status-result').style.color = color;
+            document.getElementById('status-sub').innerText = sub;
+            
+            // 语音播报
+            if(mode !== 'reset') speakText("检测到" + text + "，" + sub);
+            else if (lastText !== "无设备") speakText("无设备");
+
+            // 切换视频 (如果源不同)
+            if (videoSrc) {
+                if (videoPlayer.src !== videoSrc) {
+                    videoPlayer.src = videoSrc;
+                    videoPlayer.play().catch(e => console.log("Autoplay blocked", e));
+                }
+            } else {
+                if(mode !== 'reset') alert("该模式未上传视频！");
+            }
+        }
+
+        // --- 初始化 ---
+        function startDisplay() {
+            if(!fileURLs.idle) {
+                if(!confirm("未上传待机视频？确定继续？")) return;
+            }
+            document.getElementById('role-select').style.display = 'none';
+            document.getElementById('app-header').style.display = 'none'; // 隐藏顶部栏，全屏沉浸
+            document.getElementById('display-view').style.display = 'flex';
+            
+            setTimeout(() => changeMode('reset'), 100);
+            connectMQTT(true);
+        }
+
+        function startController() {
+            document.getElementById('role-select').style.display = 'none';
+            document.getElementById('control-view').style.display = 'block';
+            connectMQTT(false);
+        }
+
+        function speakText(text) {
+            if(text === lastText) return;
+            lastText = text;
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'zh-CN'; window.speechSynthesis.speak(u);
+        }
+
+        function handleSecretClick(cmd) { 
+            if(navigator.vibrate) navigator.vibrate(50); 
+            changeMode(cmd); 
+        }
+
+        function connectMQTT(isReceiver) {
+            const clientID = "id_" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, clientID);
+            client.connect({ onSuccess: () => { if(isReceiver) client.subscribe(myTopic); } });
+            client.onMessageArrived = (msg) => { 
+                if(document.getElementById('display-view').style.display === 'flex') {
+                    changeMode(msg.payloadString);
+                }
+            };
+        }
+        function sendMqttCommand(cmd) {
+            if(client && client.isConnected()) {
+                const message = new Paho.MQTT.Message(cmd);
+                message.destinationName = myTopic;
+                client.send(message);
+            }
+        }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Spectrogram V27 (Video Fake)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>

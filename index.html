@@ -3,49 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V36 (Silent Mix & Smooth)</title>
+    <title>Spectrogram V36 (Mute & Auto-Norm)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
         
-        /* --- 启动页 --- */
+        /* 顶部参数栏 */
         #setup-view { 
             display: flex; flex-direction: column; align-items: center; justify-content: start; 
             height: 100%; width: 100%; z-index: 50; background: #fff; position: absolute; top:0; left:0; 
             overflow-y: auto; padding: 15px 0;
         }
+
         .section-card { width: 85%; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
         .setting-row { display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; }
         .setting-label { width: 80px; font-weight: bold; color: #444; }
         input[type="range"] { flex: 1; height: 5px; cursor: pointer; }
         .setting-val { width: 30px; text-align: right; color: #0078d7; font-family: monospace; }
-        
+
         select.device-picker { width: 100%; padding: 8px; margin-bottom: 8px; }
         .file-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 11px;}
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; display: inline-block; margin-left: 5px; }
         .status-dot.loaded { background: #009900; }
-        
+
+        /* 连接状态 */
         #conn-bar { width: 90%; padding: 8px; margin-bottom: 10px; border-radius: 4px; text-align: center; font-size: 12px; font-weight: bold; color: #fff; background: #999; display: flex; justify-content: space-between; align-items: center;}
         #server-switch { background: rgba(0,0,0,0.2); border: none; color: #fff; font-size: 10px; padding: 2px 5px; cursor: pointer; border-radius: 3px; }
-        
+
         button.primary { background: #0078d7; color: white; border: none; width: 90%; padding: 14px; border-radius: 6px; font-weight: bold; font-size: 16px; margin-bottom: 10px;}
         button.ctrl { background: #eee; color: #333; border: 1px solid #ccc; width: 90%; padding: 12px; border-radius: 6px; font-weight: bold;}
 
-        /* --- 展示页 --- */
+        /* 展示页 */
         #display-view { display: none; height: 100%; width: 100%; flex-direction: column; position: relative; }
+        
+        /* 顶部状态条 (Auto开关) */
+        #display-header {
+            height: 30px; background: #eee; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #ccc; font-size: 12px;
+        }
+        #auto-scale-btn {
+            background: #999; color: #fff; padding: 2px 8px; border-radius: 10px; cursor: pointer; font-weight: bold;
+        }
+        #auto-scale-btn.active { background: #0078d7; }
+
         #canvas-wrapper { flex: 1; position: relative; background: #fff; width: 100%; overflow: hidden; }
         canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
         #y-axis { position: absolute; top: 10px; left: 5px; pointer-events: none; display: flex; flex-direction: column; gap: 20px; }
         .ruler-tag { background: rgba(255,255,255,0.7); padding: 1px 3px; font-size: 10px; color: #333; font-family: monospace; border-radius: 2px; }
+
         #text-container { height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #e0e0e0; border-top: 1px solid #ccc; z-index: 10; }
         #status-result { font-size: 28px; font-weight: bold; color: #333; }
         #status-sub { font-size: 12px; color: #666; }
-        
-        /* 隐藏面板 */
-        #hidden-settings { display: none; position: absolute; top: 0; left: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; border-bottom: 1px solid #ccc; z-index: 100; box-sizing: border-box;}
-        #settings-trigger { position: absolute; top: 0; right: 0; width: 40px; height: 40px; z-index: 90; }
 
-        /* --- 控制端 --- */
+        /* 隐藏面板 */
+        #hidden-settings { display: none; position: absolute; top: 30px; left: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; border-bottom: 1px solid #ccc; z-index: 100; box-sizing: border-box;}
+        #settings-trigger { position: absolute; top: 30px; right: 0; width: 40px; height: 40px; z-index: 90; }
+
+        /* 控制端 */
         #control-view { display: none; padding: 15px; text-align: center; height: 100%; background: #eee; overflow-y: auto; }
         .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .device-btn { padding: 15px; background: #fff; border: 1px solid #ccc; border-radius: 6px; font-weight: bold; color: #333; }
@@ -54,8 +68,6 @@
         .state-opt { flex: 1; padding: 12px; font-weight: bold; font-size: 14px; text-align: center;}
         .state-opt.active { background: #d32f2f; color: white; }
         .state-opt.normal.active { background: #009900; }
-        .remote-adjust { display: flex; justify-content: space-between; margin-bottom: 15px; background: #ddd; padding: 5px; border-radius: 6px;}
-        .adj-btn { flex: 1; border: none; background: #bbb; margin: 0 2px; border-radius: 4px; padding: 8px; font-weight: bold; color: #333;}
 
     </style>
 </head>
@@ -65,7 +77,7 @@
 
     <!-- 1. 设置页 -->
     <div id="setup-view">
-        <h3 style="margin: 0 0 10px 0;">终端 V36 配置</h3>
+        <h3 style="margin: 0 0 10px 0;">终端 V36 (Silent & Normalized)</h3>
         <div id="conn-bar">
             <span id="conn-text">⚪ 连接中...</span>
             <button id="server-switch" onclick="switchServer()">切换线路</button>
@@ -73,43 +85,26 @@
 
         <div class="section-card">
             <div style="font-size:12px; color:#999; margin-bottom:5px;">参数预设</div>
-            <!-- 音量控制只影响图像高度，不影响听到的声音(因为静音了) -->
-            <div class="setting-row">
-                <span class="setting-label">文件强度:</span>
-                <input type="range" id="p-file-vol" min="0" max="300" value="150" oninput="syncParams()">
-                <span id="v-file-vol" class="setting-val">150</span>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">显示增益:</span>
-                <input type="range" id="p-gain" min="0" max="150" value="70" oninput="syncParams()">
-                <span id="v-gain" class="setting-val">70</span>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">底噪过滤:</span>
-                <input type="range" id="p-cut" min="0" max="100" value="10" oninput="syncParams()">
-                <span id="v-cut" class="setting-val">10</span>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">高频补偿:</span>
-                <input type="range" id="p-boost" min="0" max="60" value="25" oninput="syncParams()">
-                <span id="v-boost" class="setting-val">25</span>
-            </div>
             <div class="setting-row">
                 <span class="setting-label">标尺倍率:</span>
                 <input type="range" id="p-scale" min="1" max="8" value="4" oninput="syncParams()">
                 <span id="v-scale" class="setting-val">4x</span>
             </div>
+            <!-- 以下参数在开启 Auto 后会自动调整，但保留作为基准 -->
+            <div class="setting-row">
+                <span class="setting-label">底噪门限:</span>
+                <input type="range" id="p-cut" min="0" max="100" value="15" oninput="syncParams()">
+                <span id="v-cut" class="setting-val">15</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">高频补偿:</span>
+                <input type="range" id="p-boost" min="0" max="60" value="30" oninput="syncParams()">
+                <span id="v-boost" class="setting-val">30</span>
+            </div>
         </div>
 
         <div class="section-card">
-            <div class="file-row" style="border-bottom:1px dashed #ccc; padding-bottom:8px; margin-bottom:8px;">
-                <span>0. 背景底噪 (无设备时用):</span>
-                <input type="file" id="file-input-idle" accept=".wav, .mp3">
-                <span id="dot-idle" class="status-dot"></span>
-            </div>
-
             <select id="device-picker" class="device-picker" onchange="updateUploadUI()"></select>
-            
             <div class="file-row">
                 <span>正常 (Normal):</span>
                 <input type="file" id="file-input-normal" accept=".wav, .mp3">
@@ -122,9 +117,10 @@
             </div>
         </div>
 
+        <!-- 麦克风开关 -->
         <div style="width:85%; display:flex; align-items:center; margin-bottom:15px;">
             <input type="checkbox" id="use-mic" checked>
-            <label for="use-mic" style="font-size:14px; margin-left:8px;">叠加环境麦克风</label>
+            <label for="use-mic" style="font-size:14px; margin-left:8px;">启用麦克风叠加 (建议开启)</label>
         </div>
 
         <button class="primary" onclick="startDisplay()">启动展示端</button>
@@ -133,8 +129,14 @@
 
     <!-- 2. 展示端 -->
     <div id="display-view">
+        <!-- 顶部条 -->
+        <div id="display-header">
+            <span>VISUALIZER</span>
+            <div id="auto-scale-btn" class="active" onclick="toggleAuto()">Auto-Norm: ON</div>
+        </div>
+
+        <!-- 隐藏面板 -->
         <div id="hidden-settings">
-            <div style="text-align:center; font-size:12px; color:#999; margin-bottom:10px;">微调</div>
             <div id="settings-clone-target"></div>
         </div>
         <div id="settings-trigger" onclick="toggleHiddenSettings()"></div>
@@ -156,27 +158,24 @@
 
     <!-- 3. 控制端 -->
     <div id="control-view">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <button onclick="exitController()" style="padding:5px 10px; font-size:12px;">⬅ 返回设置</button>
-            <span id="ctrl-conn-status" style="font-size:12px; color:#666;">...</span>
+        <div style="margin-bottom:10px;">
+            <button onclick="exitController()" style="padding:5px 10px; font-size:12px;">⬅ 设置</button>
+            <span id="ctrl-conn-status" style="font-size:12px; color:#666; margin-left:10px;">...</span>
         </div>
-        <div class="remote-adjust">
-            <span style="font-size:12px; align-self:center; color:#555;">画面调节</span>
-            <button class="adj-btn" onclick="sendRemoteAdjust('gain', 10)">亮+</button>
-            <button class="adj-btn" onclick="sendRemoteAdjust('cut', -10)">噪+</button>
-            <button class="adj-btn" onclick="sendRemoteAdjust('gain', -10)">亮-</button>
-        </div>
+        
         <div class="state-toggle">
             <div id="btn-state-normal" class="state-opt normal active" onclick="setGlobalState('normal')">Normal</div>
             <div id="btn-state-abnormal" class="state-opt" onclick="setGlobalState('abnormal')">Abnormal</div>
         </div>
+
         <button class="device-btn" style="width:100%; margin-bottom:20px; background:#333; color:#fff;" onclick="sendCmd('No Device')">NO DEVICE (Reset)</button>
+
         <div id="device-grid" class="grid-container"></div>
     </div>
 
     <script>
-        // 固定 Topic，确保互通
-        const myTopic = "demo/class/v36_silent_mix_fixed"; 
+        // 🔴 频道配置
+        const myTopic = "demo/class/v36_final_fix_2023"; 
         
         const servers = [
             { host: "broker.emqx.io", port: 8084, name: "EMQX" },
@@ -185,17 +184,16 @@
         let currentServerIdx = 0;
 
         const deviceList = ["Router", "Projector", "Microwave", "Heater", "Desktop", "AirConditioner", "3DPrinter", "Refridgerator", "Humidifier", "DeskLamp"];
-        
-        // 存储结构：增加 idle 字段
-        const registry = { 'idle': null };
+        const registry = {};
         deviceList.forEach(d => registry[d] = { normal: null, abnormal: null });
 
-        let client, audioCtx, analyser, fileNode, micNode, fileGain, micGain;
+        let client;
+        let audioCtx, analyser, fileNode, micNode, fileGain, micGain;
         const audioPlayer = document.getElementById('audio-player');
         let currentGlobalState = 'normal';
+        let isAutoNorm = true; // 默认开启自动归一化
         
-        // 默认参数：fileVol 设高一点，因为静音后我们只看波形
-        let p = { scale:4, cut:10, gain:70, boost:25, micVol:100, fileVol:150 };
+        let p = { scale:4, cut:15, gain:60, boost:30 };
 
         window.onload = function() {
             initUI();
@@ -211,13 +209,6 @@
             });
             document.getElementById('file-input-normal').addEventListener('change', (e) => handleUpload(e, 'normal'));
             document.getElementById('file-input-abnormal').addEventListener('change', (e) => handleUpload(e, 'abnormal'));
-            // 绑定背景底噪上传
-            document.getElementById('file-input-idle').addEventListener('change', (e) => {
-                if(e.target.files[0]) {
-                    registry['idle'] = URL.createObjectURL(e.target.files[0]);
-                    document.getElementById('dot-idle').className = "status-dot loaded";
-                }
-            });
         }
 
         function handleUpload(e, state) {
@@ -233,227 +224,6 @@
             document.getElementById('dot-abnormal').className = registry[dev].abnormal ? "status-dot loaded" : "status-dot";
         }
 
-        // --- 音频引擎 (静音播放 + 渐变) ---
-        let isVisualizerRunning = false; // 防止重复启动
-
-        async function initAudioEngine() {
-            // 1. 初始化 Context
-            if(!audioCtx) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                audioCtx = new AudioContext();
-                analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 2048; // 回退到 2048 以获得更灵敏的反应
-                analyser.smoothingTimeConstant = 0.1;
-
-                // 文件通道
-                fileNode = audioCtx.createMediaElementSource(audioPlayer);
-                fileGain = audioCtx.createGain();
-                fileNode.connect(fileGain);
-                fileGain.connect(analyser); 
-                // fileGain 不连 destination，保持静音，只看波形
-            }
-
-            // 2. 强制唤醒 (防止黑屏的关键)
-            if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
-            }
-
-            // 3. 麦克风通道 (保底信号)
-            if(document.getElementById('use-mic').checked && !micNode) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
-                    });
-                    micNode = audioCtx.createMediaStreamSource(stream);
-                    micGain = audioCtx.createGain();
-                    micNode.connect(micGain);
-                    micGain.connect(analyser); // 麦克风信号送入分析器
-                    
-                    // 应用初始音量
-                    micGain.gain.value = parseInt(document.getElementById('p-mic-vol').value) / 100;
-                    console.log("麦克风已连接 - 保底信号就绪");
-                } catch(e) {
-                    console.warn("麦克风获取失败:", e);
-                }
-            }
-
-            // 启动绘图
-            syncParams();
-            if (!isVisualizerRunning) {
-                startVisualizer();
-                isVisualizerRunning = true;
-            }
-        }
-
-        // --- 核心切换逻辑 (渐进) ---
-        function executeCommand(device, state) {
-            // 1. 确保引擎激活
-            initAudioEngine();
-            
-            const resEl = document.getElementById('status-result');
-            const subEl = document.getElementById('status-sub');
-            let fileUrl = null;
-
-            // 2. UI 更新
-            if (device === 'No Device') {
-                resEl.innerText = "NO DEVICE"; resEl.style.color = "#333";
-                subEl.innerText = "Background Monitoring";
-                fileUrl = registry['idle'];
-            } else {
-                resEl.innerText = device;
-                resEl.style.color = state === 'normal' ? "#009900" : "#d32f2f";
-                subEl.innerText = state === 'normal' ? "Normal" : "ABNORMAL!";
-                subEl.style.color = state === 'normal' ? "#555" : "#d32f2f";
-                speakText(device + " " + state);
-                fileUrl = registry[device][state];
-            }
-
-            // 3. 渐进切换逻辑
-            if(audioCtx) {
-                const now = audioCtx.currentTime;
-                const fadeTime = 0.3;
-
-                // 淡出
-                fileGain.gain.cancelScheduledValues(now);
-                fileGain.gain.setValueAtTime(fileGain.gain.value, now);
-                fileGain.gain.linearRampToValueAtTime(0, now + fadeTime);
-
-                setTimeout(() => {
-                    if (fileUrl) {
-                        audioPlayer.src = fileUrl;
-                        audioPlayer.play().catch(e=>{ console.log("等待交互") });
-                        
-                        // 淡入
-                        const targetVol = parseInt(document.getElementById('p-file-vol').value) / 100;
-                        fileGain.gain.linearRampToValueAtTime(targetVol, audioCtx.currentTime + fadeTime);
-                    } else {
-                        // 如果没有文件，就暂停播放器，只留麦克风信号
-                        audioPlayer.pause();
-                    }
-                }, fadeTime * 1000);
-            }
-        }
-
-        // --- 其他辅助 ---
-        function syncParams() {
-            p.micVol = parseInt(document.getElementById('p-mic-vol').value);
-            p.fileVol = parseInt(document.getElementById('p-file-vol').value);
-            p.scale = parseInt(document.getElementById('p-scale').value);
-            p.gain = parseInt(document.getElementById('p-gain').value);
-            p.boost = parseInt(document.getElementById('p-boost').value);
-            p.cut = parseInt(document.getElementById('p-cut').value);
-
-            ['mic-vol','file-vol','scale','gain','boost','cut'].forEach(k => {
-                const els = document.querySelectorAll(`#v-${k}, #hidden-settings #v-${k}`);
-                els.forEach(el => el.innerText = p[k] + (k==='scale'?'x':''));
-                document.querySelectorAll(`#hidden-settings #p-${k}`).forEach(inp => inp.value = p[k]);
-            });
-
-            if(micGain) micGain.gain.value = p.micVol/100;
-            // 注意：fileGain 由 fade 逻辑控制，这里只设基准值，不强行设，否则会打断 fade
-            // 只有在非切换状态下才直接设
-            // 简单处理：我们假设用户在调整音量时不是在切换瞬间
-            if(fileGain) fileGain.gain.setValueAtTime(p.fileVol/100, audioCtx.currentTime);
-
-            const base=22; 
-            document.getElementById('lbl-max').innerText=(base*p.scale)+"k";
-            document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
-        }
-
-function startVisualizer() {
-            const canvas = document.getElementById('visualizer');
-            const ctx = canvas.getContext('2d', { alpha: false });
-            
-            // 预生成高对比度调色板 (仿 Audacity: 白 -> 蓝 -> 红)
-            const colorMap = [];
-            for (let i = 0; i < 256; i++) {
-                let r, g, b; 
-                let val = i / 255.0;
-                
-                if (val < 0.1) { 
-                    // 背景：灰白带杂色 (仿真实底噪)
-                    let noise = 245 - Math.random() * 10;
-                    r = noise; g = noise; b = noise;
-                } else if (val < 0.4) { 
-                    // 弱信号：蓝
-                    let k = (val - 0.1) / 0.3; 
-                    r = 100 * (1 - k); g = 100 * (1 - k); b = 255;
-                } else if (val < 0.7) { 
-                    // 中信号：紫
-                    let k = (val - 0.4) / 0.3; 
-                    r = 150 * k + 50; g = 50 * (1 - k); b = 255;
-                } else { 
-                    // 强信号：红
-                    let k = (val - 0.7) / 0.3; 
-                    r = 255; g = 0; b = 255 * (1 - k);
-                }
-                colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
-            }
-
-            // 缓冲区
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Float32Array(bufferLength);
-
-            function draw() {
-                requestAnimationFrame(draw);
-                
-                // 获取数据 (-Infinity ~ 0 dB)
-                analyser.getFloatFrequencyData(dataArray);
-
-                // 1. 滚动效果
-                const w = canvas.width;
-                const h = canvas.height;
-                ctx.drawImage(canvas, 1, 0, w - 1, h, 0, 0, w - 1, h);
-
-                const sampleRate = audioCtx.sampleRate; // 通常 44100 or 48000
-                const nyquist = sampleRate / 2;
-
-                // 2. 绘制新的一列
-                for (let y = 0; y < h; y++) {
-                    const percent = 1 - (y / h);
-                    const targetFreq = percent * nyquist;
-                    
-                    // 找到对应的频率点
-                    const bin = Math.floor((targetFreq / nyquist) * bufferLength);
-                    if (bin >= bufferLength) continue;
-
-                    let db = dataArray[bin];
-                    // 修正死值
-                    if (db === -Infinity || db === -1000) db = -160;
-
-                    // --- 宽松的计算逻辑 ---
-                    
-                    // 高频提升 (模拟 Audacity 的 Slope)
-                    let boost = 0;
-                    if (targetFreq > 2000) {
-                        boost = p.boost * Math.log10(targetFreq / 2000);
-                    }
-
-                    // 计算显示强度
-                    // 基础分贝 + 增益 + 高频补偿
-                    // +100 是为了把负数分贝转正，方便计算
-                    let rawValue = db + p.gain + boost + 100;
-
-                    // 映射到 0-255 颜色空间
-                    // 乘以 scale 放大对比度，减去 cut 去除底噪
-                    let colorIndex = (rawValue * 2.5) - (p.cut * 3);
-
-                    // 边界限制
-                    if (colorIndex < 0) colorIndex = 0;
-                    if (colorIndex > 255) colorIndex = 255;
-
-                    // 绘制像素
-                    ctx.fillStyle = colorMap[Math.floor(colorIndex)];
-                    ctx.fillRect(w - 1, y, 1, 1);
-                }
-            }
-            // 修正画布大小
-            canvas.width = canvas.parentElement.offsetWidth;
-            canvas.height = canvas.parentElement.offsetHeight;
-            draw();
-        }
-
-        // --- MQTT & Setup ---
         function switchServer() {
             if(client) try{client.disconnect();}catch(e){}
             currentServerIdx = (currentServerIdx + 1) % servers.length;
@@ -464,18 +234,20 @@ function startVisualizer() {
             const ui = document.getElementById('conn-text');
             ui.innerText = `🟡 ${srv.name}...`;
             ui.parentElement.style.background="#d4a000";
+
             const cid = "client_" + Math.random().toString(16).substr(2, 8);
             client = new Paho.MQTT.Client(srv.host, srv.port, "/mqtt", cid);
+
             client.connect({
                 useSSL: true, timeout: 5,
                 onSuccess: () => {
                     ui.innerText = `🟢 已连接`;
                     ui.parentElement.style.background="#28a745";
-                    if(document.getElementById('ctrl-conn-status')) document.getElementById('ctrl-conn-status').innerText = "✅ Online: " + srv.name;
+                    if(document.getElementById('ctrl-conn-status')) document.getElementById('ctrl-conn-status').innerText = "✅ Online";
                     if(isReceiver) client.subscribe(myTopic);
                 },
                 onFailure: () => {
-                    ui.innerText = "🔴 失败";
+                    ui.innerText = "🔴 失败 (切换)";
                     ui.parentElement.style.background="#dc3545";
                 }
             });
@@ -483,21 +255,132 @@ function startVisualizer() {
                 if(document.getElementById('display-view').style.display === 'flex') {
                     const data = JSON.parse(msg.payloadString);
                     if(data.type === 'device') executeCommand(data.val, data.state);
-                    if(data.type === 'adjust') {
-                        if(data.param === 'gain') p.gain += data.val;
-                        else if(data.param === 'cut') p.cut += data.val;
-                        syncParams();
-                    }
                 }
             };
         }
-        function sendRemoteAdjust(param, val) {
-            if(!client || !client.isConnected()) return;
-            const payload = JSON.stringify({ type:'adjust', param:param, val:val });
-            const msg = new Paho.MQTT.Message(payload);
-            msg.destinationName = myTopic;
-            client.send(msg);
+
+        // --- 音频引擎 (核心修改) ---
+        async function initAudioEngine() {
+            if(audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            analyser = audioCtx.createAnalyser();
+            
+            // 增加平滑度，让画面不那么闪烁
+            analyser.fftSize = 4096;
+            analyser.smoothingTimeConstant = 0.2; 
+
+            // 1. 文件通路：Source -> Analyser (不接 Destination，所以静音)
+            fileNode = audioCtx.createMediaElementSource(audioPlayer);
+            fileGain = audioCtx.createGain(); // 备用
+            fileNode.connect(fileGain);
+            fileGain.connect(analyser); 
+            // ❌ fileGain.connect(audioCtx.destination); // 断开这一行，实现静音！
+
+            // 2. 麦克风通路：Source -> Analyser
+            if(document.getElementById('use-mic').checked) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
+                    micNode = audioCtx.createMediaStreamSource(stream);
+                    micGain = audioCtx.createGain();
+                    micNode.connect(micGain);
+                    micGain.connect(analyser);
+                } catch(e) {}
+            }
+            syncParams(); startVisualizer();
         }
+
+        function toggleAuto() {
+            isAutoNorm = !isAutoNorm;
+            const btn = document.getElementById('auto-scale-btn');
+            btn.className = isAutoNorm ? "active" : "";
+            btn.innerText = isAutoNorm ? "Auto-Norm: ON" : "Auto-Norm: OFF";
+        }
+
+        function syncParams() {
+            p.scale = parseInt(document.getElementById('p-scale').value);
+            p.cut = parseInt(document.getElementById('p-cut').value);
+            p.gain = parseInt(document.getElementById('p-gain').value);
+            p.boost = parseInt(document.getElementById('p-boost').value);
+
+            const els = document.querySelectorAll(`#v-scale, #v-cut, #v-gain, #v-boost, #hidden-settings .setting-val`);
+            els.forEach(el => {
+                // 简单同步显示，这里简化处理
+            });
+            const base=22; 
+            document.getElementById('lbl-max').innerText=(base*p.scale)+"k";
+            document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
+        }
+
+        function startVisualizer() {
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d', { alpha: false });
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Float32Array(bufferLength);
+
+            const colorMap = [];
+            for (let i=0; i<256; i++) {
+                let r,g,b; let val=i/255;
+                if(val<0.1){ let k=255-(val*40); r=k;g=k;b=k; }
+                else if(val<0.4){ let k=(val-0.1)/0.3; r=100*(1-k); g=100*(1-k); b=255; }
+                else if(val<0.8){ let k=(val-0.4)/0.4; r=200*k+50; g=50*(1-k); b=255; }
+                else{ let k=(val-0.8)/0.2; r=255; g=0; b=255*(1-k); }
+                colorMap[i] = `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`;
+            }
+
+            // 动态自动增益变量
+            let autoGainOffset = 0;
+
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getFloatFrequencyData(dataArray);
+                const w = canvas.width; const h = canvas.height;
+                ctx.drawImage(canvas, 1, 0, w-1, h, 0, 0, w-1, h);
+                const nyquist = audioCtx.sampleRate/2;
+
+                // --- Auto Norm 计算 ---
+                if (isAutoNorm) {
+                    // 找到当前帧的最大能量值
+                    let maxDb = -160;
+                    for (let i = 0; i < bufferLength; i++) {
+                        if (dataArray[i] > maxDb) maxDb = dataArray[i];
+                    }
+                    // 目标是将 maxDb 映射到显示范围的顶部 (比如 value 200)
+                    // 动态调整 gainOffset。为了平滑，使用缓动
+                    // 假设理想 max 是 -30dB (加了gain后)
+                    let targetOffset = -30 - maxDb;
+                    // 限制 offset 范围，防止噪音爆炸
+                    if (targetOffset > 80) targetOffset = 80; 
+                    if (targetOffset < 0) targetOffset = 0;
+                    
+                    autoGainOffset += (targetOffset - autoGainOffset) * 0.05; // 缓动系数
+                } else {
+                    autoGainOffset = 0;
+                }
+
+                for (let y = 0; y < h; y++) {
+                    const percent = 1-(y/h);
+                    const targetFreq = percent*nyquist;
+                    const bin = Math.floor((targetFreq/nyquist)*bufferLength);
+                    if(bin>=bufferLength) continue;
+                    let db = dataArray[bin]; if(db===-Infinity) db=-160;
+                    
+                    let boost = targetFreq>2000 ? p.boost * Math.log10(targetFreq/2000) : 0;
+                    
+                    // 应用自动增益
+                    let totalGain = p.gain + autoGainOffset;
+                    
+                    let norm = (db + totalGain + boost + 100)*2.5 - (p.cut*2.5);
+                    if(norm<0) norm=0; if(norm>255) norm=255;
+                    ctx.fillStyle = colorMap[Math.floor(norm)];
+                    ctx.fillRect(w-1, y, 1, 1);
+                }
+            }
+            canvas.width = canvas.parentElement.offsetWidth;
+            canvas.height = canvas.parentElement.offsetHeight;
+            draw();
+        }
+
         function setGlobalState(state) {
             currentGlobalState = state;
             document.getElementById('btn-state-normal').className = state==='normal'?"state-opt normal active":"state-opt normal";
@@ -510,6 +393,24 @@ function startVisualizer() {
             message.destinationName = myTopic;
             client.send(message);
         }
+        function executeCommand(device, state) {
+            initAudioEngine();
+            // 切歌
+            audioPlayer.pause();
+            
+            const resEl = document.getElementById('status-result');
+            const subEl = document.getElementById('status-sub');
+            if (device === 'No Device') {
+                resEl.innerText = "NO DEVICE"; resEl.style.color = "#333"; subEl.innerText = "Standby"; return;
+            }
+            resEl.innerText = device;
+            resEl.style.color = state === 'normal' ? "#009900" : "#d32f2f";
+            subEl.innerText = state === 'normal' ? "Normal" : "ABNORMAL!";
+            subEl.style.color = state === 'normal' ? "#555" : "#d32f2f";
+            speakText(device + " " + state);
+            const url = registry[device][state];
+            if(url) { audioPlayer.src = url; setTimeout(() => audioPlayer.play().catch(e=>{}), 100); }
+        }
         function speakText(text) {
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
@@ -521,9 +422,7 @@ function startVisualizer() {
             document.querySelectorAll('#hidden-settings input').forEach(input => input.oninput = syncParams);
             document.getElementById('setup-view').style.display = 'none';
             document.getElementById('display-view').style.display = 'flex';
-            // 默认进入无设备状态 (播放底噪)
-            setTimeout(() => executeCommand('No Device', 'normal'), 500);
-            connectMQTT(true);
+            initAudioEngine(); connectMQTT(true);
         }
         function startController() {
             document.getElementById('setup-view').style.display = 'none';

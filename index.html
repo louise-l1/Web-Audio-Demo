@@ -6,12 +6,22 @@
     <title>Spectrogramv0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
-        body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
+        body { 
+            margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; 
+            height: 100vh; /* 确保 body 占满视口 */
+            width: 100vw; overflow: hidden; user-select: none; 
+        }
+        
+        /* 🔴 修复点 1: 隐藏地址栏辅助 CSS */
+        #setup-view, #display-view, #control-view {
+             /* 确保主要容器使用 100% 视口高度 */
+            height: 100vh; 
+        }
         
         /* --- 1. 启动设置页 --- */
         #setup-view { 
             display: flex; flex-direction: column; align-items: center; justify-content: start; 
-            height: 100%; width: 100%; z-index: 100; background: #fff; position: absolute; top:0; left:0; 
+            width: 100%; z-index: 100; background: #fff; position: absolute; top:0; left:0; 
             overflow-y: auto; padding: 20px 0;
         }
         .section-card { width: 85%; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
@@ -28,19 +38,18 @@
 
         /* --- 2. 展示页 (布局修复) --- */
         #display-view { 
-            display: none; height: 100%; width: 100%; flex-direction: column; position: relative; 
-            /* 🔴 修复点 2: 确保 display-view 占据整个视口 */
+            display: none; width: 100%; flex-direction: column; position: relative; 
         }
         
         /* 顶部状态条 */
         #display-header {
             height: 40px; background: #333; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; font-size: 12px;
-            flex-shrink: 0; /* 不会被挤压 */
+            flex-shrink: 0; 
         }
 
         /* 画布区域 (中间自适应) */
         #canvas-wrapper { 
-            flex: 1; /* 占据剩余所有空间, 会随着 #text-container 调整而变化 */
+            flex: 1; 
             position: relative; background: #fff; width: 100%; overflow: hidden;
         }
         
@@ -48,13 +57,12 @@
         #y-axis { position: absolute; top: 10px; left: 5px; pointer-events: none; display: flex; flex-direction: column; gap: 30px; }
         .ruler-tag { background: rgba(255,255,255,0.8); padding: 2px 4px; font-size: 10px; color: #000; font-family: monospace; border-radius: 2px; font-weight: bold; }
 
-        /* 底部结果栏 (固定高度，确保不被遮挡) */
+        /* 底部结果栏 */
         #text-container { 
-            /* 🔴 修复点 2: 使用固定比例高度确保不被浏览器 UI 遮挡 */
-            height: 30vh; /* 设置为视口高度的 30% */
-            min-height: 120px; /* 最小高度保证内容显示 */
-            max-height: 300px; /* 最大高度限制，防止过大 */
-            flex-shrink: 0; /* 不会被挤压 */
+            height: 30vh; 
+            min-height: 120px; 
+            max-height: 300px; 
+            flex-shrink: 0; 
 
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             background: #f0f0f0; border-top: 2px solid #ccc; z-index: 20;
@@ -68,11 +76,10 @@
         #hidden-settings { display: none; position: absolute; top: 40px; left: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; border-bottom: 1px solid #ccc; z-index: 100; box-sizing: border-box;}
         #settings-trigger { position: absolute; top: 0; right: 0; width: 50px; height: 40px; z-index: 90; opacity: 0; }
         
-        /* 保持 Canvas 样式 */
         canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
         /* --- 3. 控制端 (保持不变) --- */
-        #control-view { display: none; padding: 15px; text-align: center; height: 100%; background: #eee; overflow-y: auto; }
+        #control-view { display: none; padding: 15px; text-align: center; background: #eee; overflow-y: auto; }
         .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .device-btn { padding: 15px; background: #fff; border: 1px solid #ccc; border-radius: 6px; font-weight: bold; color: #333; }
         .state-toggle { display: flex; margin-bottom: 15px; background: #fff; border-radius: 6px; border: 1px solid #ccc; overflow: hidden; }
@@ -84,13 +91,12 @@
 </head>
 <body>
 
-    <!-- 新增第二个 Audio 元素用于交叉渐变 -->
     <audio id="audio-player-a" loop crossOrigin="anonymous"></audio>
     <audio id="audio-player-b" loop crossOrigin="anonymous"></audio>
 
     <!-- 1. 设置页 -->
     <div id="setup-view">
-        <h3>specv1</h3>
+        <h3>spectrov1</h3>
         <p style="font-size:12px; color:green;" id="conn-status">正在连接服务器...</p>
 
         <div class="section-card">
@@ -186,15 +192,13 @@
         const registry = {};
         deviceList.forEach(d => registry[d] = { normal: null, abnormal: null });
 
-        // 🔴 修复点 1: 交叉渐变所需的变量
         let client, audioCtx, analyser;
         let micNode, micGainNode;
-        // A/B 两套音频源和增益节点
         const audioPlayerA = document.getElementById('audio-player-a');
         const audioPlayerB = document.getElementById('audio-player-b');
         let fileNodeA, fileNodeB, fileVisualGainA, fileVisualGainB, fileOutputGainA, fileOutputGainB;
-        let currentActivePlayer = null; // 追踪当前正在播放（从 1.0 渐出）的播放器
-        let currentTargetPlayer = audioPlayerA; // 追踪下一个要加载/渐入的播放器
+        let currentActivePlayer = null; 
+        let currentTargetPlayer = audioPlayerA; 
 
         let currentGlobalState = 'normal';
         let isAutoNorm = true;
@@ -203,8 +207,12 @@
         window.onload = function() {
             initUI();
             connectMQTT(false);
+            // 🔴 修复点 1: 尝试隐藏地址栏 (仅在部分移动端生效)
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+                setTimeout(() => { window.scrollTo(0, 1); }, 100);
+            }
         };
-        // ... (initUI, handleUpload, updateUploadUI 保持不变) ...
+
         function initUI() {
             const picker = document.getElementById('device-picker');
             const grid = document.getElementById('device-grid');
@@ -239,7 +247,6 @@
             p.scale = parseInt(document.getElementById('p-scale').value);
             p.gain = parseInt(document.getElementById('p-gain').value);
             p.boost = parseInt(document.getElementById('p-boost').value);
-            // Sync UI
             try { 
                 const hiddenInput = document.querySelector(`#hidden-settings #p-gain`);
                 if(hiddenInput) hiddenInput.value = p.gain;
@@ -249,19 +256,18 @@
             document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
         }
 
-        // --- 核心：音频引擎 (实现交叉渐变) ---
         async function initAudioEngine() {
             if(audioCtx) return;
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             audioCtx = new AudioContext();
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 4096;
-            analyser.smoothingTimeConstant = 0.2; // 降噪
+            analyser.smoothingTimeConstant = 0.2; 
 
             // 1. 文件播放线路 A
             fileNodeA = audioCtx.createMediaElementSource(audioPlayerA);
-            fileVisualGainA = audioCtx.createGain(); // 视觉增益 (连接到 analyser)
-            fileOutputGainA = audioCtx.createGain(); // 静音增益 (连接到 destination)
+            fileVisualGainA = audioCtx.createGain(); 
+            fileOutputGainA = audioCtx.createGain(); 
             fileVisualGainA.gain.value = 0.0;
             fileOutputGainA.gain.value = 0.001; 
             fileNodeA.connect(fileVisualGainA).connect(analyser); 
@@ -269,8 +275,8 @@
             
             // 2. 文件播放线路 B
             fileNodeB = audioCtx.createMediaElementSource(audioPlayerB);
-            fileVisualGainB = audioCtx.createGain(); // 视觉增益
-            fileOutputGainB = audioCtx.createGain(); // 静音增益
+            fileVisualGainB = audioCtx.createGain(); 
+            fileOutputGainB = audioCtx.createGain(); 
             fileVisualGainB.gain.value = 0.0;
             fileOutputGainB.gain.value = 0.001;
             fileNodeB.connect(fileVisualGainB).connect(analyser); 
@@ -282,13 +288,12 @@
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     micNode = audioCtx.createMediaStreamSource(stream);
                     micGainNode = audioCtx.createGain(); 
-                    micGainNode.gain.value = 0.5; // 麦克风默认增益 0.5 (用于归一化)
+                    micGainNode.gain.value = 0.5; 
                     micNode.connect(micGainNode).connect(analyser);
                 } catch(e) { console.warn("Mic failed"); }
             }
             syncParams(); 
             startVisualizer();
-            // 初始设置第一个播放器为目标
             currentTargetPlayer = audioPlayerA; 
         }
 
@@ -318,7 +323,6 @@
 
                 if (isAutoNorm) {
                     let maxDb = -160;
-                    // 仅计算 10k 以下的峰值，忽略超高频噪音
                     const cutBin = Math.floor((10000/nyquist)*bufferLength); 
                     for (let i=0; i<cutBin; i++) if (dataArray[i]>maxDb) maxDb=dataArray[i];
                     let targetOffset = -30 - maxDb;
@@ -344,12 +348,14 @@
             draw();
         }
 
-        // --- 逻辑控制 (实现交叉渐变) ---
+        // --- 逻辑控制 (实现交叉渐变和起始时间) ---
         function executeCommand(device, state) {
             initAudioEngine();
             const now = audioCtx.currentTime;
-            const fadeDuration = 0.4; // 400ms 渐变时间 (快一点，保持稳定)
-            const leadInTime = 0.5;  // 500ms 纯音频前导
+            const fadeDuration = 0.4; 
+            const leadInTime = 0.5;  
+            // 🔴 修复点 2: 音频起始时间
+            const startTime = 3.0; // 从 3.0s 开始播放
 
             // 1. UI 更新 (结论部分)
             const resEl = document.getElementById('status-result');
@@ -358,11 +364,9 @@
             if (device === 'No Device') {
                 resEl.innerText = "NO DEVICE"; resEl.style.color = "#333"; 
                 subEl.innerText = "Standby"; 
-                // 立即将两个音源渐出
                 const activeGain = currentTargetPlayer === audioPlayerA ? fileVisualGainB : fileVisualGainA;
                 activeGain.gain.cancelScheduledValues(now);
                 activeGain.gain.linearRampToValueAtTime(0.0, now + fadeDuration);
-                // 停止播放器 (可选，因为音量已经降到 0)
                 setTimeout(() => {
                     audioPlayerA.pause();
                     audioPlayerB.pause();
@@ -377,11 +381,8 @@
             
             const url = registry[device][state];
             if(url) {
-                // 确定 A/B 播放器和增益节点
                 const incomingPlayer = currentTargetPlayer;
                 const incomingGain = incomingPlayer === audioPlayerA ? fileVisualGainA : fileVisualGainB;
-                
-                // 确定旧的播放器和增益节点
                 const outgoingPlayer = incomingPlayer === audioPlayerA ? audioPlayerB : audioPlayerA;
                 const outgoingGain = outgoingPlayer === audioPlayerA ? fileVisualGainA : fileVisualGainB;
 
@@ -390,8 +391,18 @@
                 // 2.1 准备新音源 (Incoming)
                 incomingPlayer.src = url;
                 incomingPlayer.load();
-                // 立即播放 (静音播放，保证 Web Audio API 运行)
-                incomingPlayer.play().catch(e=>console.log("Incoming play failed", e));
+
+                // 🔴 修复点 2: 设置起始时间
+                incomingPlayer.currentTime = startTime; 
+
+                // 确保音频数据已加载，然后播放
+                const playPromise = incomingPlayer.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log("Incoming play failed (Auto-play blocked?)", error);
+                        // 尝试在用户交互后播放
+                    });
+                }
                 
                 // 设置新音源从 0 渐入到 1.0
                 incomingGain.gain.cancelScheduledValues(now);
@@ -402,25 +413,23 @@
                 if(currentActivePlayer) { 
                     outgoingGain.gain.cancelScheduledValues(now);
                     outgoingGain.gain.linearRampToValueAtTime(0.0, now + fadeDuration);
-                    // 在渐出完成后暂停旧播放器
                     setTimeout(() => {
                         outgoingPlayer.pause();
                         // 确保旧播放器回到起点，为下次渐入做准备
-                        outgoingPlayer.currentTime = 0; 
+                        outgoingPlayer.currentTime = startTime; // 旧播放器也设置好下次的起始时间
                     }, fadeDuration * 1000);
                 }
 
                 // 3. 语音前导
                 setTimeout(() => {
                     speakText(device + " " + state);
-                }, (fadeDuration + leadInTime) * 1000); // 渐变完成 + 前导时间后播报
+                }, (fadeDuration + leadInTime) * 1000); 
 
-                // 4. 更新下一个目标播放器 (为下次切换做准备)
+                // 4. 更新下一个目标播放器
                 currentActivePlayer = incomingPlayer;
                 currentTargetPlayer = outgoingPlayer;
 
             } else {
-                 // 如果没有音频文件，则直接播报，并确保两个音源都渐出
                  speakText(device + " " + state);
                  fileVisualGainA.gain.cancelScheduledValues(now);
                  fileVisualGainB.gain.cancelScheduledValues(now);
@@ -429,7 +438,7 @@
             }
         }
         
-        // ... (speakText, setGlobalState, sendCmd, MQTT functions, startDisplay, startController, exitController, toggleHiddenSettings, switchServer 保持不变) ...
+        // ... (其他函数保持不变) ...
         function speakText(text) {
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
@@ -472,6 +481,10 @@
             document.getElementById('setup-view').style.display = 'none';
             document.getElementById('display-view').style.display = 'flex';
             initAudioEngine(); connectMQTT(true);
+            // 再次尝试在切换到显示页时隐藏地址栏
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+                setTimeout(() => { window.scrollTo(0, 1); }, 100);
+            }
         }
         function startController() {
             document.getElementById('setup-view').style.display = 'none';

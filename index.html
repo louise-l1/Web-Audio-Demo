@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spectrogram V38 (Fix All)</title>
+    <title>Spectrogramv0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; height: 100vh; width: 100vw; overflow: hidden; user-select: none; }
@@ -55,6 +55,7 @@
             box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         }
         #status-label { font-size: 12px; color: #888; margin-bottom: 5px; letter-spacing: 1px;}
+        /* 重要的结论：设备名和状态 */
         #status-result { font-size: 36px; font-weight: bold; color: #333; line-height: 1.2; }
         #status-sub { font-size: 16px; color: #666; margin-top: 5px; background: #ddd; padding: 2px 10px; border-radius: 10px;}
 
@@ -144,7 +145,7 @@
             <canvas id="visualizer"></canvas>
         </div>
         
-        <!-- 底部结果栏：这就是你之前丢失的部分 -->
+        <!-- 底部结果栏：结论显示区域，已在页面下半部分 -->
         <div id="text-container">
             <div id="status-label">DETECTION RESULT</div>
             <div id="status-result">NO DEVICE</div>
@@ -175,11 +176,11 @@
         const registry = {};
         deviceList.forEach(d => registry[d] = { normal: null, abnormal: null });
 
-        let client, audioCtx, analyser, fileNode, micNode, fileGain;
+        let client, audioCtx, analyser, fileNode, fileGain, fileVisualGain, micGainNode; // 新增 fileVisualGain 和 micGainNode
         const audioPlayer = document.getElementById('audio-player');
         let currentGlobalState = 'normal';
         let isAutoNorm = true;
-        let p = { scale:4, cut:15, gain:60, boost:30 };
+        let p = { scale:4, cut:15, gain:70, boost:30 }; // 初始显示增益微调为 70
 
         window.onload = function() {
             initUI();
@@ -221,24 +222,29 @@
 
             // 1. 文件播放线路
             fileNode = audioCtx.createMediaElementSource(audioPlayer);
-            fileGain = audioCtx.createGain();
+            fileGain = audioCtx.createGain(); // 用于静音输出到扬声器
+            fileVisualGain = audioCtx.createGain(); // 🔴 修复点 1: 用于控制渐变，连接到 Analyser
             
-            // 关键修正：将音量设为极小 (0.001) 而不是切断
-            // 这样浏览器认为有声音在播放，就会驱动 Analyser 工作
-            // 但人耳听不到 0.001 的音量
+            // 关键修正：将音量设为极小 (0.001)
             fileGain.gain.value = 0.001; 
+            fileVisualGain.gain.value = 0.0; // 初始文件视觉增益为 0
 
-            fileNode.connect(analyser); // 分析器拿到原始大音量
-            fileNode.connect(fileGain); // 旁路去增益节点
-            fileGain.connect(audioCtx.destination); // 极小音量输出到喇叭，骗过浏览器
+            fileNode.connect(fileVisualGain); // 文件 -> 视觉增益 (用于渐变)
+            fileVisualGain.connect(analyser); // 视觉增益 -> 分析器
+
+            fileNode.connect(fileGain); // 文件 -> 静音增益 (用于欺骗浏览器)
+            fileGain.connect(audioCtx.destination); // 静音增益 -> 喇叭
 
             // 2. 麦克风线路
             if(document.getElementById('use-mic').checked) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     micNode = audioCtx.createMediaStreamSource(stream);
-                    micNode.connect(analyser);
-                    // 麦克风不需要接 destination，否则会啸叫
+                    micGainNode = audioCtx.createGain(); // 🔴 修复点 2: 麦克风增益节点，用于归一化
+                    micGainNode.gain.value = 0.5; // 麦克风默认增益 0.5 (可调整)
+
+                    micNode.connect(micGainNode);
+                    micGainNode.connect(analyser);
                 } catch(e) { console.warn("Mic failed"); }
             }
             syncParams(); startVisualizer();
@@ -266,6 +272,7 @@
         }
 
         function startVisualizer() {
+            // ... (绘图函数保持不变) ...
             const canvas = document.getElementById('visualizer');
             const ctx = canvas.getContext('2d', { alpha: false });
             const bufferLength = analyser.frequencyBinCount;
@@ -294,6 +301,7 @@
                     for (let i=0; i<bufferLength; i++) if (dataArray[i]>maxDb) maxDb=dataArray[i];
                     let targetOffset = -30 - maxDb;
                     if (targetOffset>80) targetOffset=80; if(targetOffset<0) targetOffset=0;
+                    // 渐进更新 AutoGainOffset，0.05 的速率可以保持动态稳定
                     autoGainOffset += (targetOffset - autoGainOffset) * 0.05;
                 } else { autoGainOffset = 0; }
 
@@ -318,16 +326,22 @@
         // --- 逻辑控制 ---
         function executeCommand(device, state) {
             initAudioEngine();
-            // 切歌瞬间暂停
-            audioPlayer.pause();
             
-            // UI 更新 (找回结论显示)
+            // 1. 切歌瞬间暂停
+            audioPlayer.pause();
+
+            // 2. UI 更新 (结论部分)
             const resEl = document.getElementById('status-result');
             const subEl = document.getElementById('status-sub');
             
             if (device === 'No Device') {
                 resEl.innerText = "NO DEVICE"; resEl.style.color = "#333"; 
                 subEl.innerText = "Standby"; 
+                // 🔴 修复点 1: 重置时，如果音频正在播放，立即将视觉增益降为 0
+                if (fileVisualGain) {
+                    fileVisualGain.gain.cancelScheduledValues(audioCtx.currentTime);
+                    fileVisualGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                }
                 return;
             }
 
@@ -336,15 +350,35 @@
             subEl.innerText = state === 'normal' ? "Status: Normal" : "Status: ABNORMAL!";
             subEl.style.color = state === 'normal' ? "#555" : "#d32f2f";
             
-            speakText(device + " " + state);
-
             const url = registry[device][state];
             if(url) {
                 audioPlayer.src = url;
-                // 延时播放以确保 Src 切换完成
+                audioPlayer.load(); // 确保 src 切换
+
+                // 🔴 修复点 1: 渐进式切入和语音前导
+                const fadeDuration = 0.5; // 500ms 渐变
+                const leadInTime = 0.5;  // 500ms 纯音频前导
+                
+                // 立即播放 (静音播放)
+                audioPlayer.play().catch(e=>console.log("Play failed", e));
+
+                if (fileVisualGain) {
+                    // 取消所有先前计划，并确保当前值为 0
+                    fileVisualGain.gain.cancelScheduledValues(audioCtx.currentTime);
+                    fileVisualGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    // 从 0 渐变到 1
+                    fileVisualGain.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + fadeDuration);
+                }
+
+                // 语音延时 (Lead-in + Fade-in duration)
                 setTimeout(() => {
-                    audioPlayer.play().catch(e=>console.log("Play failed", e));
-                }, 50);
+                    // 在音频切入完成后开始播报
+                    speakText(device + " " + state);
+                }, (fadeDuration + leadInTime) * 1000);
+
+            } else {
+                 // 如果没有音频文件，则直接播报
+                 speakText(device + " " + state);
             }
         }
 

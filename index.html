@@ -8,14 +8,23 @@
     <style>
         body { 
             margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #dcdcdc; color: #333; 
-            height: 100vh; /* 确保 body 占满视口 */
-            width: 100vw; overflow: hidden; user-select: none; 
+            height: 100vh; 
+            width: 100vw; 
+            overflow-x: hidden; /* 防止横向滚动 */
+            overflow-y: scroll; /* 🔴 修复点 1: 允许纵向滚动 */
+            user-select: none; 
         }
         
-        /* 🔴 修复点 1: 隐藏地址栏辅助 CSS */
-        #setup-view, #display-view, #control-view {
-             /* 确保主要容器使用 100% 视口高度 */
+        /* 🔴 修复点 1: 页面高度设置 */
+        #setup-view, #control-view {
+            /* 设置为 100vh，但由于 body 允许滚动，因此可以被推出 */
             height: 100vh; 
+        }
+        #display-view { 
+            display: none; width: 100%; flex-direction: column; position: relative; 
+            height: 100vh; /* 初始高度设置为 100vh */
+            padding-bottom: 1px; /* 🔴 修复点 1: 增加 1px 的底部填充，使内容略大于视口，触发地址栏隐藏机制 */
+            box-sizing: border-box; /* 确保 padding 包含在 height 内 */
         }
         
         /* --- 1. 启动设置页 --- */
@@ -36,10 +45,7 @@
         button.primary { background: #0078d7; color: white; border: none; width: 90%; padding: 15px; border-radius: 6px; font-weight: bold; font-size: 16px; margin-bottom: 15px;}
         button.ctrl { background: #eee; color: #333; border: 1px solid #ccc; width: 90%; padding: 12px; border-radius: 6px; font-weight: bold;}
 
-        /* --- 2. 展示页 (布局修复) --- */
-        #display-view { 
-            display: none; width: 100%; flex-direction: column; position: relative; 
-        }
+        /* --- 2. 展示页 --- */
         
         /* 顶部状态条 */
         #display-header {
@@ -53,7 +59,7 @@
             position: relative; background: #fff; width: 100%; overflow: hidden;
         }
         
-        /* 标尺 */
+        /* 标尺 - 🔴 修复点 2: 仅保留 #y-axis CSS 规则，但实际内容在 HTML 中被移除 */
         #y-axis { position: absolute; top: 10px; left: 5px; pointer-events: none; display: flex; flex-direction: column; gap: 30px; }
         .ruler-tag { background: rgba(255,255,255,0.8); padding: 2px 4px; font-size: 10px; color: #000; font-family: monospace; border-radius: 2px; font-weight: bold; }
 
@@ -96,7 +102,7 @@
 
     <!-- 1. 设置页 -->
     <div id="setup-view">
-        <h3>spectrogramv2</h3>
+        <h3>spectrogram</h3>
         <p style="font-size:12px; color:green;" id="conn-status">正在连接服务器...</p>
 
         <div class="section-card">
@@ -153,10 +159,11 @@
         </div>
 
         <div id="canvas-wrapper">
+            <!-- 🔴 修复点 2: 移除频率标尺内容 -->
             <div id="y-axis">
-                <span class="ruler-tag" id="lbl-max">88k</span>
-                <span class="ruler-tag" id="lbl-mid">44k</span>
-                <span class="ruler-tag">0Hz</span>
+                <!-- <span class="ruler-tag" id="lbl-max">88k</span> -->
+                <!-- <span class="ruler-tag" id="lbl-mid">44k</span> -->
+                <!-- <span class="ruler-tag">0Hz</span> -->
             </div>
             <canvas id="visualizer"></canvas>
         </div>
@@ -203,11 +210,12 @@
         let currentGlobalState = 'normal';
         let isAutoNorm = true;
         let p = { scale:4, cut:15, gain:70, boost:30 };
+        const AUDIO_START_TIME = 3.0; // 音频起始时间
 
         window.onload = function() {
             initUI();
             connectMQTT(false);
-            // 🔴 修复点 1: 尝试隐藏地址栏 (仅在部分移动端生效)
+            // 🔴 修复点 1: 初始滚动到隐藏地址栏位置
             if (/Mobi|Android/i.test(navigator.userAgent)) {
                 setTimeout(() => { window.scrollTo(0, 1); }, 100);
             }
@@ -251,9 +259,10 @@
                 const hiddenInput = document.querySelector(`#hidden-settings #p-gain`);
                 if(hiddenInput) hiddenInput.value = p.gain;
             } catch(e){}
-            const base=22; 
-            document.getElementById('lbl-max').innerText=(base*p.scale)+"k";
-            document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
+            // 🔴 修复点 2: 删除频率标签的更新逻辑
+            // const base=22; 
+            // document.getElementById('lbl-max').innerText=(base*p.scale)+"k";
+            // document.getElementById('lbl-mid').innerText=(base*p.scale*0.5).toFixed(0)+"k";
         }
 
         async function initAudioEngine() {
@@ -348,14 +357,13 @@
             draw();
         }
 
-        // --- 逻辑控制 (实现交叉渐变和起始时间) ---
+        // --- 逻辑控制 ---
         function executeCommand(device, state) {
             initAudioEngine();
             const now = audioCtx.currentTime;
             const fadeDuration = 0.4; 
             const leadInTime = 0.5;  
-            // 🔴 修复点 2: 音频起始时间
-            const startTime = 3.0; // 从 3.0s 开始播放
+            const startTime = AUDIO_START_TIME; 
 
             // 1. UI 更新 (结论部分)
             const resEl = document.getElementById('status-result');
@@ -392,15 +400,12 @@
                 incomingPlayer.src = url;
                 incomingPlayer.load();
 
-                // 🔴 修复点 2: 设置起始时间
                 incomingPlayer.currentTime = startTime; 
 
-                // 确保音频数据已加载，然后播放
                 const playPromise = incomingPlayer.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(error => {
                         console.log("Incoming play failed (Auto-play blocked?)", error);
-                        // 尝试在用户交互后播放
                     });
                 }
                 
@@ -415,8 +420,7 @@
                     outgoingGain.gain.linearRampToValueAtTime(0.0, now + fadeDuration);
                     setTimeout(() => {
                         outgoingPlayer.pause();
-                        // 确保旧播放器回到起点，为下次渐入做准备
-                        outgoingPlayer.currentTime = startTime; // 旧播放器也设置好下次的起始时间
+                        outgoingPlayer.currentTime = startTime; 
                     }, fadeDuration * 1000);
                 }
 
@@ -438,7 +442,6 @@
             }
         }
         
-        // ... (其他函数保持不变) ...
         function speakText(text) {
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
@@ -481,7 +484,7 @@
             document.getElementById('setup-view').style.display = 'none';
             document.getElementById('display-view').style.display = 'flex';
             initAudioEngine(); connectMQTT(true);
-            // 再次尝试在切换到显示页时隐藏地址栏
+            // 🔴 修复点 1: 再次尝试在切换到显示页时滚动到隐藏地址栏位置
             if (/Mobi|Android/i.test(navigator.userAgent)) {
                 setTimeout(() => { window.scrollTo(0, 1); }, 100);
             }
